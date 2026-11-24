@@ -13,7 +13,7 @@ import { Mesh, box, sweep } from '../core/mesh.js';
 import type { Slot, VehicleBuilder } from '../core/vehicle.js';
 import { doorCode, type Design } from '../archetypes/index.js';
 import type { BodyResult } from '../body/body.js';
-import { planHalfWidth, raycast } from '../body/body.js';
+import { layout, planHalfWidth, raycast, section } from '../body/body.js';
 import { sampleAt } from '../core/curve.js';
 
 type Proj = 'front' | 'rear' | 'left' | 'right';
@@ -365,7 +365,8 @@ export function buildArchLips(vb: VehicleBuilder, d: Design): void {
       const th = 0.12 + ((Math.PI - 0.24) * k) / steps;
       const z = za + Math.cos(th) * Ra, y = sp.wheelRadius + Math.sin(th) * Ra;
       if (y < sampleAt(sp.bottom, z) + 0.02) continue;
-      const w = planHalfWidth(sp, z);
+      // the outer arch edge is where the wheel well meets the (flared) side
+      const w = section(sp, z).pts[layout(sp.detail).start.C][0];
       const rad: Vec3 = [0, Math.sin(th), Math.cos(th)];
       rows.push(prof.map(([o, r]) => [w + o, y + rad[1] * r, z + rad[2] * r] as Vec3));
     }

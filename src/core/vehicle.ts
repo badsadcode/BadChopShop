@@ -50,6 +50,8 @@ export interface VNode {
   translation: Vec3;
   group: PartGroup;
   meshes: Map<Slot, Mesh>;
+  /** meshes whose normals are already designed (the body shell): never re-smoothed, merged at build */
+  fixed: Map<Slot, Mesh>;
   /** `extras.noor` block (markers, parts, collision). */
   noor?: { [k: string]: Json };
   /** Collision-only mesh (never rendered). */
@@ -75,7 +77,7 @@ export class VehicleBuilder {
     const pivot = opts.pivot ?? [0, 0, 0];
     const pw = parent ? this.worldPos(parent) : [0, 0, 0];
     const n: VNode = {
-      name, parent, group: opts.group, meshes: new Map(), noor: opts.noor,
+      name, parent, group: opts.group, meshes: new Map(), fixed: new Map(), noor: opts.noor,
       translation: [pivot[0] - pw[0], pivot[1] - pw[1], pivot[2] - pw[2]],
     };
     this.nodes.push(n);
@@ -102,14 +104,16 @@ export class VehicleBuilder {
   }
 
   /** Add vehicle-space geometry to a node's slot. */
-  add(name: string, slot: Slot, mesh: Mesh): void {
+  /** Add vehicle-space geometry to a node's slot. `fixedNormals`: keep the mesh's normals as they are. */
+  add(name: string, slot: Slot, mesh: Mesh, fixedNormals = false): void {
     if (mesh.indices.length === 0) return;
     const node = this.get(name);
     const w = this.worldPos(name);
     const local = mesh.clone().translate([-w[0], -w[1], -w[2]]);
-    const cur = node.meshes.get(slot);
+    const target = fixedNormals ? node.fixed : node.meshes;
+    const cur = target.get(slot);
     if (cur) cur.merge(local);
-    else node.meshes.set(slot, local);
+    else target.set(slot, local);
   }
 
   setCollision(name: string, mesh: Mesh): void {
@@ -124,6 +128,12 @@ export class VehicleBuilder {
     for (const n of this.nodes) {
       const off = n.group !== 'body' && include[n.group] === false;
       if (off || (n.parent && dropped.has(n.parent))) { dropped.add(n.name); continue; }
+      for (const [slot, m] of n.fixed) {
+        const cur = n.meshes.get(slot);
+        if (cur) cur.merge(m);
+        else n.meshes.set(slot, m);
+      }
+      n.fixed = new Map();
       kept.push(n);
     }
     return { name: this.name, nodes: kept, materials: this.materials };

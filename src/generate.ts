@@ -111,7 +111,7 @@ export function generate(recipe: Recipe): Generated {
         target = g.node;
       } else target = g.parent;
     } else target = nodeFor(bucket);
-    for (const [slot, m] of slots) vb.add(target, slot, m);
+    for (const [slot, m] of slots) vb.add(target, slot, m, true);
   }
   // opening panels get an inner skin (door cards, the underside of the hood) so they're solid when open
   for (const [bucket, node] of panelNode) {
@@ -122,7 +122,7 @@ export function generate(recipe: Recipe): Generated {
     for (let i = 0; i < inner.vertexCount; i++) {
       for (let k = 0; k < 3; k++) inner.positions[3 * i + k] += inner.normals[3 * i + k] * 0.025;
     }
-    vb.add(node, bucket.startsWith('door') ? 'MAT_Interior' : 'MAT_Underbody', inner);
+    vb.add(node, bucket.startsWith('door') ? 'MAT_Interior' : 'MAT_Underbody', inner, true);
   }
   vb.add('Body', 'MAT_Trim', body.shutLines);
   // the cabin's inner skin is part of the body, so the car is never see-through, interior or not

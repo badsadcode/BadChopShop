@@ -23,6 +23,16 @@ export interface StyleProfile {
   size: Range;
   shoulderIn: Range;
   shoulderRound: Range;
+  sideBulge: Range;
+  charLine: Range;
+  charOut: Range;
+  flareFront: Range;
+  flareRear: Range;
+  haunch: Range;
+  fenderPeak: Range;
+  hoodDome: Range;
+  noseRake: Range;
+  tailRake: Range;
   sillIn: Range;
   tumblehome: Range;
   roofCorner: Range;
@@ -75,6 +85,17 @@ export const STYLES: Record<StyleId, StyleProfile> = {
     size: [0.94, 0.98],
     shoulderIn: [0.008, 0.02],
     shoulderRound: [0.025, 0.04],
+    // slab sides with one crisp crease, flat hoods, upright ends
+    sideBulge: [0.004, 0.009],
+    charLine: [0.58, 0.68],
+    charOut: [0.014, 0.022],
+    flareFront: [0, 0.008],
+    flareRear: [0, 0.01],
+    haunch: [0, 0],
+    fenderPeak: [0, 0.006],
+    hoodDome: [0, 0.006],
+    noseRake: [-0.01, 0.03],
+    tailRake: [0, 0.03],
     sillIn: [0.012, 0.02],
     tumblehome: [0.12, 0.2],
     roofCorner: [0.03, 0.05],
@@ -125,6 +146,17 @@ export const STYLES: Record<StyleId, StyleProfile> = {
     size: [0.98, 1.02],
     shoulderIn: [0.018, 0.032],
     shoulderRound: [0.05, 0.075],
+    // rounder, softer: a barrel side, a faint high line, gentle bulges over the wheels
+    sideBulge: [0.01, 0.017],
+    charLine: [0.7, 0.8],
+    charOut: [0, 0.005],
+    flareFront: [0.008, 0.016],
+    flareRear: [0.01, 0.02],
+    haunch: [0, 0.3],
+    fenderPeak: [0, 0.01],
+    hoodDome: [0.006, 0.014],
+    noseRake: [0.04, 0.08],
+    tailRake: [0.03, 0.06],
     sillIn: [0.01, 0.016],
     tumblehome: [0.22, 0.3],
     roofCorner: [0.05, 0.08],
@@ -174,6 +206,17 @@ export const STYLES: Record<StyleId, StyleProfile> = {
     size: [1.03, 1.08],
     shoulderIn: [0.035, 0.05],
     shoulderRound: [0.045, 0.07],
+    // sculpted: a sharp rising waist line, muscular rear haunches, fender peaks, raked ends
+    sideBulge: [0.012, 0.02],
+    charLine: [0.72, 0.82],
+    charOut: [0.007, 0.013],
+    flareFront: [0.012, 0.022],
+    flareRear: [0.022, 0.036],
+    haunch: [0.5, 0.9],
+    fenderPeak: [0.012, 0.024],
+    hoodDome: [0.01, 0.02],
+    noseRake: [0.08, 0.14],
+    tailRake: [0.05, 0.1],
     sillIn: [0.008, 0.012],
     tumblehome: [0.3, 0.4],
     roofCorner: [0.07, 0.1],

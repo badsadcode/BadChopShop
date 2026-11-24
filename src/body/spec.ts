@@ -99,6 +99,25 @@ export interface BodySpec {
   chromeSill: boolean;
   /** lower body cladding in black plastic (0 = none, else height in m) */
   cladding: number;
+  // --- sculpting
+  /** outward barrel bulge of the side at mid-height (m) */
+  sideBulge: number;
+  /** height of the character line on the side, 0 (sill) … 1 (shoulder) */
+  charLine: number;
+  /** how far the character line stands out (m); 0 = none */
+  charOut: number;
+  /** extra lower-body width over the front / rear wheels (fender bulges, m) */
+  flareFront: number;
+  flareRear: number;
+  /** 0: the flares fade out below the shoulder; 1: they run all the way up (a muscular haunch) */
+  haunch: number;
+  /** raised ridges along the hood's outer edges (m) */
+  fenderPeak: number;
+  /** a raised dome down the middle of the hood (m) */
+  hoodDome: number;
+  /** how far the top of the nose / tail face leans back (m) */
+  noseRake: number;
+  tailRake: number;
   /** two-tone: roof in MAT_Paint2 */
   twoToneRoof: boolean;
 }

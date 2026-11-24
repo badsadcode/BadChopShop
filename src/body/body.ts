@@ -15,7 +15,7 @@
  * Where there is no greenhouse (hood, trunk) D, E and F collapse to a point and G becomes the hood.
  */
 import type { Vec2, Vec3 } from '../core/math.js';
-import { clamp, cross, lerp, normalize, smoothstep, sub } from '../core/math.js';
+import { clamp, cross, dot, lerp, normalize, smoothstep, sub } from '../core/math.js';
 import { sampleAt } from '../core/curve.js';
 import { Mesh } from '../core/mesh.js';
 import type { Slot } from '../core/vehicle.js';
@@ -28,8 +28,8 @@ const GROUP: Record<SegId, number> = { A: 0, B: 1, C: 1, S: 1, D: 2, E: 3, F: 4,
 
 /** How many intervals each segment gets: 'low' is the faceted low-poly look, 'high' is smooth. */
 const COUNTS: Record<Detail, Record<SegId, number>> = {
-  low: { A: 1, B: 2, C: 2, S: 2, D: 1, E: 3, F: 1, G: 3 },
-  high: { A: 3, B: 4, C: 6, S: 4, D: 1, E: 5, F: 3, G: 6 },
+  low: { A: 1, B: 2, C: 4, S: 2, D: 1, E: 3, F: 2, G: 5 },
+  high: { A: 3, B: 4, C: 8, S: 4, D: 1, E: 5, F: 3, G: 8 },
 };
 
 interface Layout {
@@ -64,6 +64,8 @@ export interface Section {
   L: number;
   W: number;
   arch: boolean;
+  /** per-point z (raked noses and tails); when absent every point sits at `z` */
+  zs?: number[];
 }
 
 export interface BodyResult {
@@ -91,6 +93,27 @@ export function planHalfWidth(sp: BodySpec, z: number): number {
   return sp.halfWidth * f;
 }
 
+/** Extra lower-body width over the wheels (fender bulges), metres. */
+export function flareAt(sp: BodySpec, z: number): number {
+  const Ra = sp.wheelRadius + sp.archGap;
+  const bump = (dz: number): number => {
+    const u = Math.min(1, Math.abs(dz) / (Ra * 1.9));
+    return Math.cos((u * Math.PI) / 2) ** 2;
+  };
+  return sp.flareFront * bump(z - sp.frontAxleZ) + sp.flareRear * bump(z - sp.rearAxleZ);
+}
+
+/** C-segment parameters (0 = bottom of the side, 1 = shoulder) for each point; always includes the character line. */
+function sideTs(n: number, tc: number): number[] {
+  if (n === 4) return [0.15, 0.45, tc, 1];
+  const ts: number[] = [];
+  for (let k = 1; k <= n; k++) ts.push(k / n);
+  let best = 0;
+  for (let i = 0; i < n - 1; i++) if (Math.abs(ts[i] - tc) < Math.abs(ts[best] - tc)) best = i;
+  ts[best] = tc;
+  return ts.sort((x, y) => x - y);
+}
+
 /** The half cross-section at z (x ≥ 0), NPTS points from bottom centre to top centre. */
 export function section(sp: BodySpec, z: number): Section {
   const C = layout(sp.detail).counts;
@@ -100,6 +123,7 @@ export function section(sp: BodySpec, z: number): Section {
   const inGlass = z < sp.cowlZ && z > sp.glassEndZ - 1e-6;
   const L = inGlass ? Math.min(sampleAt(sp.belt, z), H) : H;
   const G = Math.max(0, H - L);
+  const flare = flareAt(sp, z);
 
   // wheel arches
   let archY = -Infinity;
@@ -115,35 +139,45 @@ export function section(sp: BodySpec, z: number): Section {
   const rb = Math.min(sp.bottomCorner, (L - B) * 0.3, W * 0.3);
   const wellX = W - sp.wellDepth;
 
+  // The sculpted side, as x at parameter t (0 = bottom of the side, 1 = start of the shoulder):
+  // a barrel bulge, a crisp character line at t = charLine, fender flares over the wheels (reaching
+  // up to the shoulder as a haunch on some eras), and the shoulder's inward lean.
+  const sideX = (t: number): number => {
+    const base = W - sp.shoulderIn * t * t - sp.tuck * (1 - t) ** 3 * (arch ? 0 : 1);
+    const bulge = sp.sideBulge * Math.sin(Math.PI * t);
+    const tc = sp.charLine;
+    const ch = sp.charOut * (t <= tc ? t / tc : (1 - t) / (1 - tc));
+    const fl = flare * (1 - (1 - sp.haunch) * smoothstep(0.35, 1, t));
+    return base + bulge + ch + fl;
+  };
+
   const pts: Vec2[] = [[0, B]];
   // A: bottom
   const xA = arch ? wellX : W - rb;
   for (let k = 1; k <= C.A; k++) pts.push([(xA * k) / C.A, B]);
   // B: lower corner, or the wheel well (up the inner wall, then out along the arch)
+  const x0 = sideX(0);
   for (let k = 1; k <= C.B; k++) {
     const t = k / C.B;
-    if (arch) pts.push(t <= 0.5 ? [wellX, lerp(B, archY, t * 2)] : [lerp(wellX, W, (t - 0.5) * 2), archY]);
+    if (arch) pts.push(t <= 0.5 ? [wellX, lerp(B, archY, t * 2)] : [lerp(wellX, x0, (t - 0.5) * 2), archY]);
     else {
       const ang = -Math.PI / 2 + t * (Math.PI / 2);
-      pts.push([W - rb + Math.cos(ang) * rb, B + rb + Math.sin(ang) * rb]);
+      pts.push([x0 - rb + Math.cos(ang) * rb, B + rb + Math.sin(ang) * rb]);
     }
   }
-  // C: the side, from the sill (or arch) up to the shoulder, with a little tuck-under
-  // the shoulder is rounded (S), so the side stops a radius short of the top
+  // C: the side, from the sill (or arch) up to the shoulder; the shoulder is rounded (S),
+  // so the side stops a radius short of the top
   const sr = Math.max(0.004, Math.min(sp.shoulderRound, (L - B) * 0.25, W * 0.2));
   const yC0 = arch ? Math.min(archY, L - sr - 0.02) : B + rb;
-  for (let k = 1; k <= C.C; k++) {
-    const t = k / C.C;
-    pts.push([W - sp.shoulderIn * t * t - sp.tuck * (1 - t) ** 3 * (arch ? 0 : 1), lerp(yC0, L - sr, t)]);
-  }
+  for (const t of sideTs(C.C, sp.charLine)) pts.push([sideX(t), lerp(yC0, L - sr, t)]);
   // S: shoulder, a quarter round from the side over onto the top (hood, deck or window ledge)
-  const sx = W - sp.shoulderIn - sr, sy = L - sr;
+  const sx = sideX(1) - sr, sy = L - sr;
   for (let k = 1; k <= C.S; k++) {
     const ang = (k / C.S) * (Math.PI / 2);
     pts.push([sx + Math.cos(ang) * sr, sy + Math.sin(ang) * sr]);
   }
-  // D: window sill step
-  const xs = W - sp.shoulderIn - sr - sp.sillIn * smoothstep(0, 0.05, G);
+  // D: window sill step (measured from the un-flared side, so a haunch leaves a ledge, not bulging glass)
+  const xs = Math.min(sx, W - sp.shoulderIn - sr - sp.sillIn * smoothstep(0, 0.05, G));
   const sillH = Math.min(sp.sillHeight, G * 0.3);
   pts.push([xs, L + sillH]);
   // E: side glass, leaning in (tumblehome), with thin trim bands top and bottom
@@ -160,15 +194,25 @@ export function section(sp: BodySpec, z: number): Section {
     const ang = (k / C.F) * (Math.PI / 2);
     pts.push([xr - rr + Math.cos(ang) * rr, H - rr + Math.sin(ang) * rr]);
   }
-  // G: across the top to the centre line, crowned
+  // G: across the top to the centre line. Roofs are crowned; hoods (and, more gently, boot lids)
+  // are sculpted: raised fender peaks along the edges and a power dome down the middle.
   const xg = Math.max(1e-4, xr - rr);
   const crown = lerp(sp.hoodCrown, sp.roofCrown, smoothstep(0, 0.25, G));
+  // hood sculpting fades out before the rounded nose (and before the tail), so the ends stay clean
+  const endFade = (1 - smoothstep(sp.hoodFrontZ - 0.4, sp.hoodFrontZ - 0.05, z)) * smoothstep(-sp.length / 2 + 0.1, -sp.length / 2 + 0.45, z);
+  const lid = (1 - smoothstep(0, 0.2, G)) * (z > 0 ? 1 : 0.4) * endFade;
   const a2 = Math.min(0.15, sp.trim / xg);
-  const gT = [a2];
-  for (let k = 1; k < C.G; k++) gT.push(a2 + ((1 - a2) * k) / (C.G - 1));
+  const gT = C.G === 5 ? [a2, 0.16, 0.42, 0.68, 1] : (() => {
+    const o = [a2];
+    for (let k = 1; k < C.G; k++) o.push(a2 + ((1 - a2) * k) / (C.G - 1));
+    return o;
+  })();
   for (const t of gT) {
     const x = xg * (1 - t);
-    pts.push([x, H + crown * (1 - (x / xg) ** 2)]);
+    const u = x / xg;
+    const peak = smoothstep(0.5, 0.82, u) * (1 - smoothstep(0.9, 1, u));
+    const dome = 1 - smoothstep(0.18, 0.5, u);
+    pts.push([x, H + crown * (1 - u * u) + lid * (sp.fenderPeak * peak + sp.hoodDome * dome)]);
   }
   return { z, pts, B, H, L, W, arch };
 }
@@ -279,13 +323,28 @@ function stationZs(sp: BodySpec): number[] {
   return out;
 }
 
+/**
+ * z of a point at height y on section s, after raking: over the last stretch of the car the top of
+ * the section is pushed back (nose) or forward (tail), so the end faces lean like real ones.
+ */
+export function rakedZ(sp: BodySpec, s: Section, y: number): number {
+  const zN = sp.length / 2, zT = -sp.length / 2;
+  const lenN = Math.max(0.35, sp.noseRake * 3), lenT = Math.max(0.35, sp.tailRake * 3);
+  const rN = smoothstep(zN - lenN, zN, s.z), rT = smoothstep(zT + lenT, zT, s.z);
+  if (rN <= 0 && rT <= 0) return s.z;
+  let top = -Infinity;
+  for (const p of s.pts) top = Math.max(top, p[1]);
+  const w = clamp((y - s.B) / Math.max(0.05, top - s.B), 0, 1) ** 1.3;
+  return s.z - sp.noseRake * rN * w + sp.tailRake * rT * w;
+}
+
 /** Shrink a section toward its middle (used for the rounded nose and tail). */
 function shrinkSection(s: Section, d: number, z: number): Section {
   let top = -Infinity;
   for (const p of s.pts) top = Math.max(top, p[1]);
   const cy = (s.B + top) / 2, hh = Math.max(0.05, (top - s.B) / 2);
   const sx = Math.max(0.05, 1 - d / Math.max(0.1, s.W)), sy = Math.max(0.05, 1 - d / hh);
-  return { ...s, z, pts: s.pts.map(([x, y]) => [x * sx, cy + (y - cy) * sy] as Vec2) };
+  return { ...s, zs: undefined, z, pts: s.pts.map(([x, y]) => [x * sx, cy + (y - cy) * sy] as Vec2) };
 }
 
 export function buildBody(sp: BodySpec): BodyResult {
@@ -306,11 +365,16 @@ export function buildBody(sp: BodySpec): BodyResult {
     nose.push(shrinkSection(last, sp.noseRound * (1 - Math.cos(phi)), last.z + sp.noseRound * Math.sin(phi)));
   }
   const st = [...tail, ...main, ...nose];
+  // raked ends: shear the last stretch so the nose and tail faces lean back instead of standing upright
+  for (const sec of st) {
+    const zs = sec.pts.map(([, y]) => rakedZ(sp, sec, y));
+    if (zs.some((zz) => Math.abs(zz - sec.z) > 1e-9)) sec.zs = zs;
+  }
   const nS = st.length;
   const isEndRow = (i: number): boolean => i < ROUND_ROWS || i >= ROUND_ROWS + main.length - 1;
 
   // positions grid (left half)
-  const P = (i: number, j: number): Vec3 => [st[i].pts[j][0], st[i].pts[j][1], st[i].z];
+  const P = (i: number, j: number): Vec3 => [st[i].pts[j][0], st[i].pts[j][1], st[i].zs ? st[i].zs[j] : st[i].z];
   // UVs: arc length along the section, z along the car
   const U: number[][] = st.map((s) => {
     const u = [0];
@@ -343,19 +407,33 @@ export function buildBody(sp: BodySpec): BodyResult {
     for (const c of creaseAt) if (i >= c) g++;
     return g;
   };
-  /** normal at grid vertex (i,j) as seen from quad (qi,qk) */
+  // smoothing groups: the side is split at the character line, so the line reads as a crisp crease;
+  // the upper side and the shoulder roll smoothly onto each other
+  const cTs = sideTs(lay.counts.C, sp.charLine);
+  const charLocal = cTs.findIndex((t) => Math.abs(t - sp.charLine) < 1e-9) + 1;
+  const grpOf = (k: number): number => {
+    const seg = lay.segOf[k];
+    if (seg === 'C') return k - lay.start.C >= charLocal ? 5 : 1;
+    if (seg === 'S') return 5;
+    return GROUP[seg];
+  };
+  const cosMax = Math.cos((50 * Math.PI) / 180);
+  /** normal at grid vertex (i,j) as seen from quad (qi,qk): same group, same panel, and not across a sharp fold */
   const vertexNormal = (i: number, j: number, qi: number, qk: number): Vec3 => {
-    const grp = GROUP[lay.segOf[qk]];
+    const grp = grpOf(qk);
     const topSeg = grp === 4;
     const zg = zGroup(qi);
+    const own = normalize(FN[qi][qk]);
     let n: Vec3 = [0, 0, 0];
     for (const ii of [i - 1, i]) {
       if (ii < 0 || ii >= nS - 1) continue;
       if (topSeg && zGroup(ii) !== zg) continue;
       for (const kk of [j - 1, j]) {
         if (kk < 0 || kk >= NPTS - 1) continue;
-        if (GROUP[lay.segOf[kk]] !== grp) continue;
+        if (grpOf(kk) !== grp) continue;
         const f = FN[ii][kk];
+        if (Math.hypot(...f) < 1e-12) continue;
+        if (dot(normalize(f), own) < cosMax) continue;
         n = [n[0] + f[0], n[1] + f[1], n[2] + f[2]];
       }
     }
@@ -388,15 +466,14 @@ export function buildBody(sp: BodySpec): BodyResult {
       const info = classify(sp, k, zMid, st[i], st[i + 1], isEndRow(i));
       const m = outL(info.bucket, info.slot);
       const corners: [number, number][] = [[i, k], [i + 1, k], [i + 1, k + 1], [i, k + 1]];
-      const fn = normalize(FN[i][k]);
-      const ids = corners.map(([ii, jj]) => m.v(P(ii, jj), flat ? fn : vertexNormal(ii, jj, i, k), [U[ii][jj], st[ii].z]));
+      const ids = corners.map(([ii, jj]) => m.v(P(ii, jj), vertexNormal(ii, jj, i, k), [U[ii][jj], st[ii].z]));
       m.quad(ids[0], ids[1], ids[2], ids[3], FN[i][k]);
     }
   }
 
   // end caps (with an upright rear window for estates and vans)
-  const capTail = capMesh(st[0], -1, sp.uprightRear ? sp : null, sp.tailRound * 0.45);
-  const capNose = capMesh(st[nS - 1], 1, null, sp.noseRound * 0.45);
+  const capTail = capMesh(st[0], -1, sp.uprightRear ? sp : null, sp.tailRound * 0.45, (y) => rakedZ(sp, st[0], y));
+  const capNose = capMesh(st[nS - 1], 1, null, sp.noseRound * 0.45, (y) => rakedZ(sp, st[nS - 1], y));
   for (const [bucket, slot, m] of [...capTail, ...capNose]) {
     const target = bucket === 'glass' ? outL('rear_window', 'MAT_Glass') : outL(sp.uprightRear && bucket === 'trim' ? 'body' : 'body', slot);
     target.merge(m);
@@ -443,7 +520,7 @@ function fullOutline(s: Section): Vec2[] {
  * Close an end of the body. The cap is built as rings shrinking toward the middle, so an upright
  * rear window (a rounded rectangle) can sit in it as real geometry with a trim frame.
  */
-function capMesh(s: Section, dir: 1 | -1, glassFor: BodySpec | null, bulge = 0): [string, Slot, Mesh][] {
+function capMesh(s: Section, dir: 1 | -1, glassFor: BodySpec | null, bulge = 0, zAt: (y: number) => number = () => s.z): [string, Slot, Mesh][] {
   const outline = fullOutline(s);
   let top = -Infinity;
   for (const p of outline) top = Math.max(top, p[1]);
@@ -454,15 +531,16 @@ function capMesh(s: Section, dir: 1 | -1, glassFor: BodySpec | null, bulge = 0):
     const cy = (s.B + top) / 2;
     const ringT = 0.55;
     const inner = outline.map(([x, y]) => [x * ringT, cy + (y - cy) * ringT] as Vec2);
-    const c = paint.v([0, cy, s.z + dir * bulge], facing, [0, cy]);
-    const o = outline.map((p) => paint.v([p[0], p[1], s.z], facing, [p[0], p[1]]));
-    const ii = inner.map((p) => paint.v([p[0], p[1], s.z + dir * bulge * 0.8], facing, [p[0], p[1]]));
+    const c = paint.v([0, cy, zAt(cy) + dir * bulge], facing, [0, cy]);
+    const o = outline.map((p) => paint.v([p[0], p[1], zAt(p[1])], facing, [p[0], p[1]]));
+    const ii = inner.map((p) => paint.v([p[0], p[1], zAt(p[1]) + dir * bulge * 0.8], facing, [p[0], p[1]]));
     for (let i = 0; i < o.length; i++) {
       const j = (i + 1) % o.length;
       paint.tri(o[i], o[j], ii[j], facing);
       paint.tri(o[i], ii[j], ii[i], facing);
       paint.tri(c, ii[i], ii[j], facing);
     }
+    recomputeNormals(paint);
     return [['body', 'MAT_Paint', paint]];
   }
   // rear window rectangle on the back face
@@ -497,24 +575,32 @@ function capMesh(s: Section, dir: 1 | -1, glassFor: BodySpec | null, bulge = 0):
     const n = ra.length;
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n;
-      const a = m.v([ra[i][0], ra[i][1], s.z], facing, ra[i]), b = m.v([ra[j][0], ra[j][1], s.z], facing, ra[j]);
-      const c = m.v([rbb[j][0], rbb[j][1], s.z], facing, rbb[j]), d = m.v([rbb[i][0], rbb[i][1], s.z], facing, rbb[i]);
+      const a = m.v([ra[i][0], ra[i][1], zAt(ra[i][1])], facing, ra[i]), b = m.v([ra[j][0], ra[j][1], zAt(ra[j][1])], facing, ra[j]);
+      const c = m.v([rbb[j][0], rbb[j][1], zAt(rbb[j][1])], facing, rbb[j]), d = m.v([rbb[i][0], rbb[i][1], zAt(rbb[i][1])], facing, rbb[i]);
       m.tri(a, b, c, facing);
       m.tri(a, c, d, facing);
     }
   };
   strip(paint, ring0, ring1);
   strip(trim, ring1, ring2);
-  const c = glass.v([cx, cy, s.z], facing, [cx, cy]);
-  const ids = ring2.map((p) => glass.v([p[0], p[1], s.z], facing, p));
+  const c = glass.v([cx, cy, zAt(cy)], facing, [cx, cy]);
+  const ids = ring2.map((p) => glass.v([p[0], p[1], zAt(p[1])], facing, p));
   for (let i = 0; i < ids.length; i++) glass.tri(c, ids[i], ids[(i + 1) % ids.length], facing);
   return [['body', 'MAT_Paint', paint], ['trim', 'MAT_Trim', trim], ['glass', 'MAT_Glass', glass]];
 }
 
 /** The inside of the cabin, seen through the glass: the body sections pushed in, faces flipped. */
-function buildLiner(sp: BodySpec, main: Section[], NPTS: number): Mesh {
+function buildLiner(sp: BodySpec, main: Section[], _NPTS: number): Mesh {
   const z1 = sp.cowlZ + 0.05, z0 = Math.max(sp.glassEndZ - 0.05, -sp.length / 2 + 0.15);
-  const secs = main.filter((s) => s.z >= z0 && s.z <= z1);
+  // the liner is mostly seen in shadow through tinted glass: a handful of section points and
+  // every other station is plenty
+  const lay = layout(sp.detail);
+  const keep = [0, lay.start.B, lay.start.C, lay.start.S, lay.start.D, lay.start.F, lay.start.G, lay.start.G + 2, lay.npts - 1]
+    .filter((j, i, a) => j < lay.npts && a.indexOf(j) === i);
+  const NPTS = keep.length;
+  const all = main.filter((s) => s.z >= z0 && s.z <= z1);
+  const secs0 = all.filter((_, i) => i % 2 === 0 || i === all.length - 1);
+  const secs = secs0.map((s) => ({ ...s, pts: keep.map((j) => s.pts[j]) }));
   const m = new Mesh();
   if (secs.length < 2) return m;
   const inset = 0.035;
@@ -614,10 +700,11 @@ function buildShutLines(sp: BodySpec, st: Section[]): Mesh {
       const tx = p1[0] - p0[0], ty = p1[1] - p0[1], l = Math.hypot(tx, ty);
       const nx = ty / l, ny = -tx / l;
       const n: Vec3 = [nx, ny, 0];
-      const a = m.v([p0[0] + nx * lift, p0[1] + ny * lift, z - w], n);
-      const b = m.v([p0[0] + nx * lift, p0[1] + ny * lift, z + w], n);
-      const c = m.v([p1[0] + nx * lift, p1[1] + ny * lift, z + w], n);
-      const d = m.v([p1[0] + nx * lift, p1[1] + ny * lift, z - w], n);
+      const z0 = s.zs ? s.zs[k] : z, z1 = s.zs ? s.zs[k + 1] : z;
+      const a = m.v([p0[0] + nx * lift, p0[1] + ny * lift, z0 - w], n);
+      const b = m.v([p0[0] + nx * lift, p0[1] + ny * lift, z0 + w], n);
+      const c = m.v([p1[0] + nx * lift, p1[1] + ny * lift, z1 + w], n);
+      const d = m.v([p1[0] + nx * lift, p1[1] + ny * lift, z1 - w], n);
       m.quad(a, b, c, d, n);
     }
   };
@@ -637,8 +724,9 @@ function buildShutLines(sp: BodySpec, st: Section[]): Mesh {
         const tx = s.pts[k][0] - p[0], ty = s.pts[k][1] - p[1], l = Math.hypot(tx, ty) || 1;
         const n: Vec3 = [ty / l, -tx / l, 0];
         const ux = tx / l, uy = ty / l;
-        const base: Vec3 = [p[0] + n[0] * lift + ux * 0.006, p[1] + n[1] * lift + uy * 0.006, s.z];
-        return [[base[0] - ux * w, base[1] - uy * w, s.z], [base[0] + ux * w, base[1] + uy * w, s.z], n];
+        const zz = s.zs ? s.zs[j] : s.z;
+        const base: Vec3 = [p[0] + n[0] * lift + ux * 0.006, p[1] + n[1] * lift + uy * 0.006, zz];
+        return [[base[0] - ux * w, base[1] - uy * w, zz], [base[0] + ux * w, base[1] + uy * w, zz], n];
       };
       const [a0, a1, n] = quadAt(sts[i]);
       const [b0, b1] = quadAt(sts[i + 1]);
