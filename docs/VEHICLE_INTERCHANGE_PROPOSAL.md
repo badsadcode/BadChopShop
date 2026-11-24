@@ -25,7 +25,8 @@ Add to the `kind` list:
 | `vehicle.wheeled` | Cars, vans, trucks, buses, wheeled military |
 | `vehicle.tracked` | Tanks, tracked APCs; half-tracks use this and also have wheel markers |
 
-Plain `vehicle` stays valid for static props (a wreck with no driving data).
+Plain `vehicle` stays valid for static props (a wreck with no driving data). **Until v0.5 lands, BadChopShop writes
+`kind: "vehicle"`** (the v0.4 schema's enum) and carries the detail in the `vehicle` block.
 
 ## 2. Space
 
@@ -39,9 +40,18 @@ facing +Z with +Y up, +X is the vehicle's left).
 
 ### 3.1 `vehicle.wheel`
 
-An **empty node at the wheel's hub centre**, at rest height. Its child mesh node(s) are the wheel's visuals
-(rim + tyre), so an engine can spin the marker about its local **X** axis and steer it about local **Y**. The wheel's
-rolling direction is +Z.
+An **empty node at the wheel's hub centre**, at rest height: the steering knuckle. An engine **steers it about local Y**.
+Below it (as built by BadChopShop v0.1):
+
+```
+Wheel_FL            marker vehicle.wheel (steers)
+├─ Wheel_FL_Hub     spins about local X (tyre, rim); named in the marker's `spin_node`, flagged `spin: [1,0,0]`
+│  └─ Wheel_FL_Disc brake disc (spins with the wheel)
+└─ Wheel_FL_Caliper brake caliper (steers, never spins)
+```
+
+Splitting steering from spinning means calipers and other non-rotating bits can live on the wheel. The wheel's rolling
+direction is +Z.
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -56,6 +66,7 @@ rolling direction is +Z.
 | `handbrake` | bool | Has the handbrake (default: rear axles) |
 | `suspension` | object | `{ "travel_up": m, "travel_down": m }` measured from rest; stiffness lives in the manifest's drive spec |
 | `twin` | bool | Twin tyres (trucks): one physics wheel, wider visual |
+| `spin_node` | string | Name of the child node that rotates with the wheel |
 
 Name fallback: `Wheel_FL`, `Wheel_RR2`, …
 
@@ -102,7 +113,7 @@ A moving part that is **not** a door. The joint's children move with it.
 
 | Marker | Vehicle use |
 |---|---|
-| `door` (v0.4) | Doors, hood, trunk, tailgate, hatches. **Add fields** `axis` [x,y,z], `max` (rad), and `opens` value `"hinge"`; `part` tells which (`door`, `hood`, `trunk`, `hatch`) |
+| `door` (v0.4) | Doors, hood, trunk, tailgate, hatches. **Add fields** `axis` [x,y,z] (node-local) and `max` (rad, or m for `slide`), and the `opens` values `"hinge"` and `"up"`. **Rule: rotating `max` about `axis` (right-hand rule) opens the panel outward; positive is always open.** `part` tells which (`door`, `hood`, `trunk`, `hatch`). The node's pivot is the hinge line |
 | `entrance` (v0.4) | Where a character stands to get in, `kind: "vehicle"` (new value) |
 | `socket` (v0.4) | `accepts`: `weapon.mount`, `cargo`, `tow.hitch`, `roof.rack`, `trailer` |
 | `light` (v0.4) | Headlights are `KHR_lights_punctual` spots; the marker adds `role`: `head`, `high`, `brake`, `reverse`, `indicator.left`, `indicator.right`, `beacon`, and `material` (the emissive slot to switch, e.g. `MAT_LightBrake`) |
@@ -119,8 +130,10 @@ node with `size` [x,y,z] (a box centred on the node) and `zone`: `engine`, `batt
 ## 4. Part vocabulary additions
 
 Add to the `part` list (v0.4 already has `door`, `window`, `hull`, `detail`): `body`, `panel`, `bumper`, `hood`,
-`trunk`, `windshield`, `wheel`, `tyre`, `rim`, `light`, `mirror`, `interior`, `seat`, `chassis`, `armour`, `turret`,
-`gun`, `track`, `running_gear`.
+`trunk`, `windshield`, `wheel`, `tyre`, `rim`, `brakes`, `suspension`, `engine`, `battery`, `exhaust`, `light`,
+`mirror`, `interior`, `seat`, `chassis`, `armour`, `turret`, `gun`, `track`, `running_gear`.
+
+Each of these is its own node in BadChopShop output, so a game can hide, damage, repair or remove it.
 
 These line up with Baltic Drive's damage parts (`Engine, Battery, Tyre, Brakes, Suspension, Windshield, Window, Door,
 Hood, Trunk, Seat`): visible ones via `part`, hidden ones via `vehicle.zone`, brakes and suspension via the wheel.
@@ -176,7 +189,14 @@ Physics values are **suggestions**; games tune them.
 The first nine fields are named after Baltic Drive's `CarSpec` (D98/D96/D123/D125) on purpose, so its importer is a
 copy. NoorEngine's Milestone 10 may want more (gear ratios, torque curve); add them as optional fields in `v: 2`.
 
-## 7. Open questions
+## 7. Lamps
+
+Lamps are geometry with emissive materials by function: `MAT_LightHead`, `MAT_LightBrake`, `MAT_LightIndicator`,
+`MAT_LightReverse`. They export **off** (`emissiveFactor` 0) with the "on" colour in the material's
+`extras.noor.emissive_on`, so a game switches a whole function by one material. `light` markers (role `head`, `brake`)
+sit where a game would put real light sources. `KHR_lights_punctual` spots for headlamps: later.
+
+## 8. Open questions
 
 1. Should `joint` be generic now (vehicles + BadMechs) or vehicle-only (`vehicle.joint`) until BadMechs adopts it?
    Proposal: generic.

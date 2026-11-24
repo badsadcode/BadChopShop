@@ -1,7 +1,7 @@
 # BadChopShop
 
 **Procedural, game-ready vehicle generator**
-**Project brief** · Bad Ideas Works · Status: concept, written 2026-11-24 (Tom + Sage)
+**Project brief** · Bad Ideas Works · Written 2026-11-24 (Tom + Sage) · Status: v0.1 running (civilian cars)
 
 > **Core idea:** vehicle type + style + seed = a reproducible, good-looking, already-painted vehicle that a game can
 > actually *drive*, from a rusty hatchback to a main battle tank.
@@ -67,10 +67,12 @@ clearly as "a pickup" without being "a Ford".
 
 ## 3. The look
 
-Clean, stylised and readable, in the family's look: bold silhouettes, painted PBR, moderate polygon counts. A
-vehicle should look designed for a particular game, not assembled from random parts.
+**Low-poly, faceted, flat-coloured: Synty POLYGON / Project Zomboid style** (Tom, 2026-11-24). Chunky chamfers, flat
+shading, readable silhouettes, one material per surface type. A vehicle should look designed for a particular game,
+not assembled from random parts. A smooth `detail: 'high'` mode exists for later (and for LODs the other way round).
 
-Target budgets (LOD0, adjustable): car ~8–15k triangles, truck/bus ~15–25k, tank ~20–30k, plus LOD1/LOD2 files.
+Budgets (LOD0, adjustable): car ~5–6k triangles for the exterior, ~6–9k with every part (interior, engine, suspension…);
+trucks/buses later ~10–15k; tanks ~15–20k.
 
 ## 4. How the geometry works (the honest engineering problem)
 
@@ -103,7 +105,11 @@ nothing else matters.
 - **Damage-ready parts:** parts named and tagged so a game's damage system (e.g. Baltic Drive's engine, battery,
   tyres, windshield, windows, doors, hood, trunk, seats) can map hits to parts without extra setup.
 - **Collision:** a convex body hull (plus optional extra hulls), never rendered.
-- **Interior:** a simple, low-detail cabin (seats, dashboard, wheel) for v1, visible through the glass.
+- **Interior:** a simple, low-detail cabin (seats, dashboard, wheel), visible through the glass.
+- **Separate, switchable parts** (Tom, for Baltic Drive): interior, engine, battery, exhaust, wheels (tyre + rim),
+  brakes (disc + caliper), suspension (spring + damper + arm), lights, windshield and windows, doors, hood, trunk/tailgate,
+  mirrors, bumpers. Not every game needs them, so every optional group can be switched off (`include`), and doors,
+  hood, trunk and glass can be their own nodes or welded into the body (`separate`).
 
 ## 6. Output and compatibility
 
@@ -131,8 +137,8 @@ hatchback_42.preview.png  thumbnail
 
 ## 7. Technology
 
-- **TypeScript**, same style as BadGun and BadCharacters: a library with zero runtime dependencies, a CLI
-  (`badchopshop generate hatchback --style seventies --seed 42`), a web playground (three.js, Vite) with
+- **TypeScript**, same style as BadGun and BadCharacters (see [`ARCHITECTURE.md`](ARCHITECTURE.md)): a library with zero runtime dependencies, a CLI
+  (`badchopshop generate hatchback --style seventies --seed 42`), a web playground (three.js) with
   🎲 *Surprise me* and download, a devlog, and tests (determinism, Khronos validator clean, stress).
 - **Port-friendly core.** The generator core does not touch the DOM, three.js or Node APIs: plain data in, plain
   data out, its own GLB writer. three.js lives only in the playground. Code shall remain understandable to whichever
@@ -145,10 +151,11 @@ hatchback_42.preview.png  thumbnail
 
 | # | Goal | Done when |
 |---|---|---|
-| 0 | Scaffold: repo, CLI, playground, GLB writer, validator, determinism test | An empty-ish box on four wheels exports validator-clean and drives in the playground's test rig |
-| 1 | **Smooth kernel**: hatchback and sedan, Modern + Seventies | Ten random seeds look like cars, not soap. Tom approves |
-| 2 | Vehicle contract: wheels, doors, hood, trunk, lights, seats, collision, drive spec; the v0.5 proposal reviewed | A generated car imports into Baltic Drive and drives with no hand tuning |
-| 3 | Pickup, panel van, light utility (jeep); Wasteland style; camo palettes | Lineup render of all types × styles |
+| 0 | Scaffold: repo, CLI, playground, GLB writer, validator, determinism test | ✅ done (v0.1) |
+| 1 | **Body kernel**, civilian first: hatchback, sedan, estate, panel van × seventies, nineties, modern, low-poly | ✅ done (v0.1), Tom to approve the look |
+| 2 | Vehicle contract: wheels, doors, hood, trunk, lights, seats, collision, drive spec, separate parts | ✅ in the files (v0.1); ⏳ the v0.5 proposal reviewed, and a car driving in Baltic Drive with no hand tuning |
+| 2b | **Delivery trucks** (cab + box, twin rear wheels), door jambs, LOD1/LOD2 | next |
+| 3 | Pickup, light utility (jeep); Wasteland style; camo palettes | Lineup render of all types × styles |
 | 4 | **Hard kernel + tracks**: main battle tank | A tank whose turret turns and tracks scroll, in the playground |
 | 5 | Breadth: trucks, bus, APC, service variants, LODs, texture bakes | The family photo for the README |
 | — | Port to C# as a NoorForge bench | When NoorForge is ready for generators |

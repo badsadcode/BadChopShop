@@ -1,0 +1,50 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:#cfd3d6;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+const q = new URLSearchParams(location.search);
+const W = +q.get('w') || 1200, H = +q.get('h') || 700;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.setPixelRatio(1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(q.get('bg') || '#cfd3d6');
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(4, 8, 5); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8 });
+scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.ShadowMaterial({ opacity: 0.35 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const files = (q.get('f') || '').split(',').filter(Boolean);
+const spacing = +q.get('sp') || 0;
+const loader = new GLTFLoader();
+const groups = [];
+for (const f of files) {
+  const g = await loader.loadAsync(f);
+  g.scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (o.name.includes('colonly')) o.visible = false; } });
+  groups.push(g.scene); scene.add(g.scene);
+}
+const cols = +q.get('cols') || groups.length;
+groups.forEach((g, i) => { const c = i % cols, r = Math.floor(i / cols); g.position.set((c - (cols - 1) / 2) * spacing, 0, -r * (+q.get('rsp') || spacing * 2.3)); });
+const box = new THREE.Box3(); groups.forEach((g) => box.expandByObject(g));
+const center = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+const view = q.get('view') || 'tq';
+const fov = 28;
+const cam = new THREE.PerspectiveCamera(fov, W / H, 0.05, 500);
+const r = Math.max(size.x, size.z * 0.8, size.y * 2) * (+q.get('zoom') || 1.15);
+const dirs = { tq: [1, 0.42, 1.25], tqr: [-1.1, 0.45, -1.2], side: [1, 0.12, 0], front: [0, 0.2, 1], rear: [0, 0.25, -1], top: [0.001, 1, 0.001], low: [1.2, 0.18, 1.0] };
+const d = new THREE.Vector3(...(dirs[view] || dirs.tq)).normalize();
+const dist = r / (2 * Math.tan((fov * Math.PI) / 360));
+cam.position.copy(center).addScaledVector(d, dist);
+cam.lookAt(center);
+renderer.render(scene, cam);
+window.__done = true;
+</script></body></html>

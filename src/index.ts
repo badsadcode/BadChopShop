@@ -1,0 +1,12 @@
+export { generate } from './generate.js';
+export type { Generated } from './generate.js';
+export { toGLB, toGltf } from './export/glb.js';
+export { buildManifest, recipeJson, baseName } from './export/manifest.js';
+export { uuidV5, sha256, hex } from './export/hash.js';
+export type { Recipe, Include, Separate } from './types.js';
+export { GENERATOR_VERSION } from './types.js';
+export { ARCHETYPE_IDS } from './archetypes/index.js';
+export type { ArchetypeId } from './archetypes/index.js';
+export { STYLE_IDS, STYLES } from './styles/index.js';
+export type { StyleId } from './styles/index.js';
+export { SLOTS, PART_GROUPS } from './core/vehicle.js';

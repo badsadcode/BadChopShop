@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BadChopShop</title>
+<meta name="description" content="Procedural, game-ready low-poly vehicles. Pick a type, an era and a seed; download a .glb that a game can actually drive.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #1b1d20; --panel: #24272b; --panel2: #2d3136; --ink: #ecebe6; --dim: #9a9c9f; --accent: #f2b233; --accent-ink: #1b1d20;
+    --line: #3a3e44; --ok: #7bc47f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.45 Inter, system-ui, sans-serif; }
+  body { display: grid; grid-template-columns: 320px 1fr; height: 100vh; }
+  aside { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 18px 18px 28px; }
+  h1 { font: 700 26px/1.1 'Space Grotesk', sans-serif; margin: 0; letter-spacing: -0.5px; }
+  h1 span { color: var(--accent); }
+  .tag { color: var(--dim); font-size: 12.5px; margin: 6px 0 16px; }
+  .nav { display: flex; gap: 12px; font-size: 13px; margin-bottom: 14px; }
+  .nav a { color: var(--accent); text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  h2 { font: 600 11px/1 Inter, sans-serif; text-transform: uppercase; letter-spacing: 1.2px; color: var(--dim); margin: 18px 0 8px; }
+  .seg { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .seg.three { grid-template-columns: repeat(3, 1fr); }
+  .seg button, .btn { background: var(--panel2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 6px; font: 600 13px Inter, sans-serif; cursor: pointer; }
+  .seg button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .seg button:hover:not(.on), .btn:hover { border-color: var(--dim); }
+  .row { display: flex; gap: 6px; align-items: center; }
+  input[type=number] { width: 100%; background: var(--panel2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: 600 14px Inter, sans-serif; }
+  .big { width: 100%; background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 10px; padding: 12px; font: 700 15px 'Space Grotesk', sans-serif; cursor: pointer; margin-top: 10px; }
+  .big:hover { filter: brightness(1.08); }
+  .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sw { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
+  .sw.on { border-color: var(--ink); }
+  .sw.auto { background: conic-gradient(#c8641c, #6f9fc8, #1f4a33, #c2201f, #c8641c); }
+  .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+  .checks label { display: flex; gap: 6px; align-items: center; cursor: pointer; font-size: 13px; }
+  .downloads { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  main { position: relative; overflow: hidden; }
+  canvas { display: block; }
+  .hud { position: absolute; left: 16px; bottom: 14px; right: 16px; display: flex; justify-content: space-between; align-items: end; pointer-events: none; gap: 12px; }
+  .card { background: rgba(27,29,32,.82); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; pointer-events: auto; backdrop-filter: blur(4px); }
+  .card b { font: 700 16px 'Space Grotesk', sans-serif; }
+  .card .meta { color: var(--dim); font-size: 12.5px; }
+  .tools { display: flex; gap: 6px; pointer-events: auto; flex-wrap: wrap; justify-content: end; }
+  .tools .btn { background: rgba(45,49,54,.9); }
+  .tools .btn.on { background: var(--accent); color: var(--accent-ink); }
+  @media (max-width: 760px) {
+    body { grid-template-columns: 1fr; grid-template-rows: 55vh auto; height: auto; }
+    main { grid-row: 1; height: 55vh; }
+    aside { grid-row: 2; border-right: 0; }
+    .hud { flex-direction: column; align-items: stretch; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<aside>
+  <h1>Bad<span>Chop</span>Shop</h1>
+  <div class="tag">Procedural low-poly cars. Fresh, legal, and with no previous owners.</div>
+  <div class="nav"><a href="devlog/">📓 Devlog</a><a href="https://github.com/badsadcode/BadChopShop">⚙️ GitHub</a></div>
+
+  <h2>Type</h2>
+  <div class="seg" id="types"></div>
+  <h2>Era</h2>
+  <div class="seg three" id="styles"></div>
+  <h2>Seed</h2>
+  <div class="row"><input type="number" id="seed" value="1" min="0"><button class="btn" id="prev">◀</button><button class="btn" id="next">▶</button></div>
+  <h2>Paint</h2>
+  <div class="swatches" id="palettes"></div>
+  <button class="big" id="surprise">🎲 Surprise me</button>
+
+  <h2>Parts (switch off what your game doesn't need)</h2>
+  <div class="checks" id="parts"></div>
+  <h2>Panels</h2>
+  <div class="checks">
+    <label><input type="checkbox" id="sepPanels" checked> separate doors/hood/trunk</label>
+    <label><input type="checkbox" id="sepGlass" checked> separate windows</label>
+  </div>
+  <h2>Detail</h2>
+  <div class="seg" id="detail"></div>
+
+  <h2>Download</h2>
+  <div class="downloads">
+    <button class="btn" id="dlGlb">.glb</button>
+    <button class="btn" id="dlManifest">.noor.json</button>
+    <button class="btn" id="dlRecipe">recipe</button>
+  </div>
+</aside>
+<main id="view">
+  <div class="hud">
+    <div class="card"><b id="title">…</b><div class="meta" id="meta"></div></div>
+    <div class="tools">
+      <button class="btn" id="doors">🚪 Open up</button>
+      <button class="btn" id="spin">🛞 Roll</button>
+      <button class="btn" id="lights">💡 Lights</button>
+      <button class="btn" id="xray">🔧 Under the hood</button>
+    </div>
+  </div>
+</main>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import * as Shop from '../../dist/index.js';
+
+const TYPES = { hatchback: 'Hatchback', sedan: 'Sedan', estate: 'Estate', van: 'Van' };
+const STYLES = { seventies: '70s', nineties: '90s', modern: 'Modern' };
+const PARTS = ['interior', 'engine', 'battery', 'exhaust', 'brakes', 'suspension', 'lights', 'wheels', 'collision', 'markers'];
+
+const state = { type: 'sedan', style: 'seventies', seed: 1, palette: undefined, detail: 'low', include: {}, separate: { panels: true, glass: true } };
+try { Object.assign(state, JSON.parse(decodeURIComponent(location.hash.slice(1)) || '{}')); } catch {}
+
+const $ = (id) => document.getElementById(id);
+function segButtons(el, items, key, after) {
+  el.innerHTML = '';
+  for (const [k, label] of Object.entries(items)) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.className = state[key] === k ? 'on' : '';
+    b.onclick = () => { state[key] = k; if (after) after(); render(); };
+    el.appendChild(b);
+  }
+}
+
+// ------------------------------------------------------------ three.js
+const view = $('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+view.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#2a2d31');
+scene.fog = new THREE.Fog('#2a2d31', 18, 40);
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(4, 8, 5);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6 });
+scene.add(sun);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(30, 64), new THREE.MeshStandardMaterial({ color: '#3a3d41', roughness: 0.95 }));
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+const grid = new THREE.GridHelper(30, 30, '#4a4e54', '#33363a');
+grid.position.y = 0.002;
+scene.add(grid);
+const camera = new THREE.PerspectiveCamera(35, 1, 0.05, 200);
+camera.position.set(5.2, 2.6, 6.2);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.7, 0);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.495;
+controls.minDistance = 2.5;
+controls.maxDistance = 20;
+
+function resize() {
+  const r = view.getBoundingClientRect();
+  renderer.setSize(r.width, r.height);
+  camera.aspect = r.width / r.height;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+
+let car = null, current = null;
+const anim = { doors: 0, doorsTarget: 0, spin: false, lights: false, xray: false };
+const loader = new GLTFLoader();
+
+function recipe() {
+  const r = { type: state.type, style: state.style, seed: state.seed, detail: state.detail };
+  if (state.palette !== undefined) r.palette = state.palette;
+  const inc = {};
+  for (const p of PARTS) if (state.include[p] === false) inc[p] = false;
+  if (Object.keys(inc).length) r.include = inc;
+  if (!state.separate.panels || !state.separate.glass) r.separate = { panels: state.separate.panels, glass: state.separate.glass };
+  return r;
+}
+
+async function render() {
+  location.hash = encodeURIComponent(JSON.stringify({ type: state.type, style: state.style, seed: state.seed, palette: state.palette, detail: state.detail, include: state.include, separate: state.separate }));
+  segButtons($('types'), TYPES, 'type');
+  segButtons($('styles'), STYLES, 'style', () => { state.palette = undefined; });
+  segButtons($('detail'), { low: 'Low-poly', high: 'Smooth' }, 'detail');
+  $('seed').value = state.seed;
+  const r = recipe();
+  const g = Shop.generate(r);
+  const glb = Shop.toGLB(g.vehicle);
+  current = { g, glb, r };
+  // palettes
+  const pal = $('palettes');
+  pal.innerHTML = '';
+  const auto = document.createElement('div');
+  auto.className = 'sw auto' + (state.palette === undefined ? ' on' : '');
+  auto.title = 'Seed picks';
+  auto.onclick = () => { state.palette = undefined; render(); };
+  pal.appendChild(auto);
+  Shop.STYLES[state.style].palettes.forEach((p, i) => {
+    const s = document.createElement('div');
+    s.className = 'sw' + (state.palette === i ? ' on' : '');
+    s.title = p.name;
+    s.style.background = `rgb(${p.paint.map((c) => Math.round(c * 255)).join(',')})`;
+    s.onclick = () => { state.palette = i; render(); };
+    pal.appendChild(s);
+  });
+  const gltf = await loader.parseAsync(glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength), '');
+  if (car) scene.remove(car);
+  car = gltf.scene;
+  car.traverse((o) => {
+    if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
+    if (o.name.endsWith('-convcolonly')) o.visible = false;
+  });
+  scene.add(car);
+  applyToggles();
+  let tris = 0;
+  for (const n of g.vehicle.nodes) for (const m of n.meshes.values()) tris += m.indices.length / 3;
+  const d = g.design;
+  $('title').textContent = `${STYLES[d.style.id]} ${TYPES[d.type]} · ${d.palette.name}`;
+  $('meta').textContent = `${d.body.length.toFixed(2)} m · ${d.doorCount + (d.body.tailgate ? 1 : 0)} doors · ${tris.toLocaleString()} triangles · ${(glb.length / 1024).toFixed(0)} KB`;
+}
+
+// door/hood/trunk opening from the noor `door` markers (axis, max, opens)
+function applyToggles() {
+  if (!car) return;
+  car.traverse((o) => {
+    const n = o.userData?.noor;
+    if (n?.marker === 'door') {
+      o.userData.rest ??= { p: o.position.clone(), q: o.quaternion.clone() };
+      const t = anim.doors;
+      const axis = new THREE.Vector3(...n.axis).normalize();
+      if (n.opens === 'slide') {
+        o.position.copy(o.userData.rest.p).addScaledVector(axis, n.max * t);
+      } else {
+        o.quaternion.copy(o.userData.rest.q).multiply(new THREE.Quaternion().setFromAxisAngle(axis, n.max * t));
+      }
+    }
+    if (o.isMesh && o.material?.userData?.noor?.emissive_on) {
+      const on = o.material.userData.noor.emissive_on;
+      o.material.emissive.setRGB(...on).multiplyScalar(anim.lights ? 1 : 0);
+      o.material.emissiveIntensity = anim.lights ? 2.5 : 0;
+    }
+    if (o.isMesh && ['Body', 'Hood'].includes(o.name)) {
+      for (const m of [].concat(o.material)) {
+        if (m.name === 'MAT_Paint' || m.name === 'MAT_Paint2') { m.transparent = anim.xray; m.opacity = anim.xray ? 0.25 : 1; m.depthWrite = !anim.xray; }
+      }
+    }
+  });
+}
+
+function loop() {
+  requestAnimationFrame(loop);
+  const k = 0.12;
+  if (Math.abs(anim.doors - anim.doorsTarget) > 1e-3) { anim.doors += (anim.doorsTarget - anim.doors) * k; applyToggles(); }
+  if (car && anim.spin) {
+    car.traverse((o) => { if (o.userData?.noor?.spin) o.rotateX(0.12); });
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+// ------------------------------------------------------------ controls
+$('seed').onchange = () => { state.seed = Math.max(0, Math.floor(+$('seed').value || 0)); render(); };
+$('prev').onclick = () => { state.seed = Math.max(0, state.seed - 1); render(); };
+$('next').onclick = () => { state.seed += 1; render(); };
+$('surprise').onclick = () => {
+  const t = Object.keys(TYPES), s = Object.keys(STYLES);
+  state.type = t[Math.floor(Math.random() * t.length)];
+  state.style = s[Math.floor(Math.random() * s.length)];
+  state.seed = Math.floor(Math.random() * 100000);
+  state.palette = undefined;
+  render();
+};
+const parts = $('parts');
+for (const p of PARTS) {
+  const l = document.createElement('label');
+  l.innerHTML = `<input type="checkbox" ${state.include[p] === false ? '' : 'checked'}> ${p}`;
+  l.querySelector('input').onchange = (e) => { state.include[p] = e.target.checked ? undefined : false; if (e.target.checked) delete state.include[p]; render(); };
+  parts.appendChild(l);
+}
+$('sepPanels').checked = state.separate.panels;
+$('sepGlass').checked = state.separate.glass;
+$('sepPanels').onchange = (e) => { state.separate.panels = e.target.checked; render(); };
+$('sepGlass').onchange = (e) => { state.separate.glass = e.target.checked; render(); };
+const toggle = (id, key, after) => $(id).onclick = () => { anim[key] = !anim[key]; $(id).classList.toggle('on', anim[key]); if (after) after(); applyToggles(); };
+$('doors').onclick = () => { anim.doorsTarget = anim.doorsTarget ? 0 : 1; $('doors').classList.toggle('on', !!anim.doorsTarget); };
+toggle('spin', 'spin');
+toggle('lights', 'lights');
+toggle('xray', 'xray');
+
+function download(name, data, type) {
+  const url = URL.createObjectURL(new Blob([data], { type }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+$('dlGlb').onclick = () => download(`${Shop.baseName(current.r)}.glb`, current.glb, 'model/gltf-binary');
+$('dlManifest').onclick = () => download(`${Shop.baseName(current.r)}.noor.json`, JSON.stringify(Shop.buildManifest(current.g, { glb: current.glb }), null, 2), 'application/json');
+$('dlRecipe').onclick = () => download(`${Shop.baseName(current.r)}.recipe.json`, Shop.recipeJson(current.r), 'application/json');
+
+resize();
+render();
+loop();
+</script>
+</body>
+</html>

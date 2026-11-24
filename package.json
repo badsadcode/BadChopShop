@@ -1,0 +1,42 @@
+{
+  "name": "badchopshop",
+  "version": "0.1.0",
+  "description": "Procedural, game-ready vehicles. Type + style + seed = a reproducible, drivable car (.glb).",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "badchopshop": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "preview": "npm run build && node tools/serve.mjs",
+    "render": "npm run build && node tools/render.mjs",
+    "site": "npm run build && node tools/build-site.mjs"
+  },
+  "keywords": [
+    "procedural",
+    "gltf",
+    "glb",
+    "vehicle",
+    "car",
+    "game-assets",
+    "generator"
+  ],
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "gltf-validator": "^2.0.0-dev.3.10",
+    "marked": "^15.0.12",
+    "three": "^0.170.0",
+    "typescript": "^5.9.3"
+  }
+}
