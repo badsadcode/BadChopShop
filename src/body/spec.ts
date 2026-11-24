@@ -118,6 +118,8 @@ export interface BodySpec {
   /** how far the top of the nose / tail face leans back (m) */
   noseRake: number;
   tailRake: number;
+  /** two-tone lower body: everything below the character line in MAT_Paint2 */
+  lowerTone: boolean;
   /** two-tone: roof in MAT_Paint2 */
   twoToneRoof: boolean;
 }

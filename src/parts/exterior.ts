@@ -9,7 +9,7 @@
 import type { Vec2, Vec3 } from '../core/math.js';
 import { add, normalize, scale } from '../core/math.js';
 import { ellipse, roundedRect } from '../core/curve.js';
-import { Mesh, box, sweep } from '../core/mesh.js';
+import { Mesh, box, extrude, sweep } from '../core/mesh.js';
 import type { Slot, VehicleBuilder } from '../core/vehicle.js';
 import { doorCode, type Design } from '../archetypes/index.js';
 import type { BodyResult } from '../body/body.js';
@@ -124,6 +124,11 @@ export function buildExterior(vb: VehicleBuilder, d: Design, body: BodyResult): 
   vb.node('Grille', { parent: 'Body', group: 'body', noor: { part: 'detail' } });
   vb.node('Bumper_Front', { parent: 'Body', group: 'body', noor: { part: 'bumper' } });
   vb.node('Bumper_Rear', { parent: 'Body', group: 'body', noor: { part: 'bumper' } });
+
+  // ------------------------------------------------------------------ recessed fascia (lamps and grille sit in a dark panel)
+  if (d.features.fascia) {
+    put(vb, 'Grille', 'MAT_Trim', 'MAT_Trim', decal(body, d, 'front', roundedRect(noseW * 1.82, 0.21, 0.03, 1), 0, lampY - 0.005, 0.004, 0.03));
+  }
 
   // ------------------------------------------------------------------ headlamps
   const heads: { x: number; y: number }[] = [];
@@ -281,6 +286,10 @@ export function buildExterior(vb: VehicleBuilder, d: Design, body: BodyResult): 
     }
   }
 
+  // ------------------------------------------------------------------ hood scoop and spoiler
+  if (d.features.scoop) buildScoop(vb, d, body);
+  if (d.features.spoiler !== 'none') buildSpoiler(vb, d, body, d.features.spoiler);
+
   // light markers for games (which slot to switch on)
   const markers: [string, Vec3, string, string][] = [];
   for (const h of heads) markers.push([`Light_Head${h.x > 0 ? 'L' : 'R'}`, [h.x, h.y, zN], 'head', 'MAT_LightHead']);
@@ -353,7 +362,7 @@ export function buildArchLips(vb: VehicleBuilder, d: Design): void {
   const st = d.style.id;
   const lipH = st === 'seventies' ? 0.03 : st === 'nineties' ? (sp.cladding > 0 ? 0.06 : 0.04) : 0.05;
   const lipOut = st === 'seventies' ? 0.012 : st === 'nineties' && sp.cladding > 0 ? 0.03 : 0.02;
-  const slot: Slot = sp.cladding > 0 ? 'MAT_Plastic' : 'MAT_Paint';
+  const slot: Slot = sp.cladding > 0 ? 'MAT_Plastic' : sp.lowerTone ? 'MAT_Paint2' : 'MAT_Paint';
   // profile across the lip: [outward along the body side normal (x), along the arch radius (into the body)]
   const prof: [number, number][] = [[-0.035, -0.004], [lipOut * 0.4, -0.01], [lipOut, lipH * 0.35], [0, lipH]];
   const steps = low ? 9 : 26;
@@ -383,4 +392,48 @@ export function buildArchLips(vb: VehicleBuilder, d: Design): void {
   }
   const both = m.clone().merge(m.clone().mirrorX());
   vb.add('Body', slot, both);
+}
+
+/** A hood scoop: a raised, chamfered block on the hood with a dark intake at the front. Rides on the Hood. */
+function buildScoop(vb: VehicleBuilder, d: Design, body: BodyResult): void {
+  const sp = d.body;
+  const z = sp.cowlZ + (sp.hoodFrontZ - sp.cowlZ) * 0.42;
+  const hit = raycast(body.rayTris, [0, 5, z], [0, -1, 0]);
+  if (!hit) return;
+  const node = vb.has('Hood') ? 'Hood' : 'Body';
+  const w = 0.42, l = Math.min(0.55, (sp.hoodFrontZ - sp.cowlZ) * 0.45), h = 0.075;
+  const y = hit.p[1];
+  // side profile (z, y): low at the back, tall and open at the front
+  const prof: Vec2[] = [[-l / 2, -0.03], [l / 2, -0.03], [l / 2, h], [l / 2 - 0.05, h], [-l / 2, 0.01]];
+  const m = extrudeAlongX(prof, w, 0.012).translate([0, y, z]);
+  vb.add(node, 'MAT_Paint', m);
+  vb.add(node, 'MAT_Trim', box([0, y + h * 0.45, z + l / 2 + 0.004], [w - 0.06, h * 0.6, 0.01]));
+}
+
+/** A boot-lid lip (ducktail) or a wing on posts, at the back of the trunk or the top of the hatch. */
+function buildSpoiler(vb: VehicleBuilder, d: Design, body: BodyResult, kind: 'lip' | 'wing'): void {
+  const sp = d.body;
+  const zT = -sp.length / 2;
+  const z = sp.trunk ? zT + 0.14 : sp.roofRearZ - 0.03;
+  const hit = raycast(body.rayTris, [0, 5, z], [0, -1, 0]);
+  if (!hit) return;
+  const node = sp.trunk && vb.has('Trunk') ? 'Trunk' : vb.has('Tailgate') ? 'Tailgate' : 'Body';
+  const y = hit.p[1];
+  const half = planHalfWidth(sp, z) - 0.12;
+  if (kind === 'lip') {
+    const prof: Vec2[] = [[-0.07, 0], [0.06, 0], [0.04, 0.02], [-0.07, 0.055]];
+    vb.add(node, 'MAT_Paint', extrudeAlongX(prof, half * 2, 0.01).translate([0, y - 0.005, z]));
+  } else {
+    const wing: Vec2[] = [[-0.11, 0], [0.09, 0.01], [0.08, 0.025], [-0.11, 0.035]];
+    const wy = y + (sp.trunk ? 0.16 : 0.05);
+    vb.add(node, 'MAT_Paint', extrudeAlongX(wing, half * 2 + 0.06, 0.008).translate([0, wy, z - 0.02]));
+    for (const s of [1, -1]) vb.add(node, d.style.id === 'modern' ? 'MAT_Trim' : 'MAT_Paint', box([s * (half - 0.12), (y + wy) / 2, z - 0.02], [0.04, wy - y + 0.02, 0.1]));
+  }
+}
+
+/** Extrude a side profile (z, y) across the car (along X), centred on x = 0, with chamfered ends. */
+function extrudeAlongX(prof: Vec2[], width: number, bevel: number): Mesh {
+  // extrude() builds along +Z from a shape in XY: build in (shapeX = z, shapeY = y), then turn Z into X
+  const m = extrude(prof, width, { bevel, back: true }).translate([0, 0, -width / 2]);
+  return m.transform({ x: [0, 0, 1], y: [0, 1, 0], z: [-1, 0, 0] });
 }

@@ -238,7 +238,7 @@ function classify(sp: BodySpec, k: number, z: number, sec0: Section, sec1: Secti
   if (seg === 'A') return { slot: 'MAT_Underbody', bucket: 'body' };
   if (seg === 'B') {
     if (sec0.arch && sec1.arch) return { slot: 'MAT_Underbody', bucket: 'body' };
-    return { slot: sp.cladding > 0 ? 'MAT_Plastic' : paint, bucket: 'body' };
+    return { slot: sp.cladding > 0 ? 'MAT_Plastic' : sp.lowerTone ? 'MAT_Paint2' : paint, bucket: 'body' };
   }
   if (endRow) {
     if (seg === 'E' && glassZone && !sp.uprightRear && z < 0 && sp.tailgate) return { slot: 'MAT_Glass', bucket: 'body' };
@@ -249,7 +249,9 @@ function classify(sp: BodySpec, k: number, z: number, sec0: Section, sec1: Secti
   if (seg === 'S') return { slot: paint, bucket: glassZone ? doorBucket : 'body' };
   if (seg === 'C') {
     const clad = sp.cladding > 0 && yMid < sec0.B + sp.cladding + 0.12 && local === 0;
-    return { slot: clad ? 'MAT_Plastic' : paint, bucket: doorBucket };
+    const cTs = sideTs(lay.counts.C, sp.charLine);
+    const belowLine = local < cTs.findIndex((t) => Math.abs(t - sp.charLine) < 1e-9) + 1;
+    return { slot: clad ? 'MAT_Plastic' : sp.lowerTone && belowLine ? 'MAT_Paint2' : paint, bucket: doorBucket };
   }
   if (seg === 'D') {
     // the sill strip only where real side glass sits above it; where the greenhouse is just growing out

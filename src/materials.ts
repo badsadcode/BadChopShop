@@ -10,7 +10,8 @@ const mul = (c: Vec3, k: number): Vec3 => [c[0] * k, c[1] * k, c[2] * k];
 
 export function materialsFor(d: Design, overrides: Partial<Record<Slot, Partial<MaterialDef>>> = {}): Record<Slot, MaterialDef> {
   const paint = d.palette.paint;
-  const paint2 = d.palette.paint2 ?? mul(paint, 0.6);
+  // second colour: the palette's, or for a two-tone lower body a dark grey (the AE86 look)
+  const paint2 = d.palette.paint2 ?? (d.body.lowerTone ? [0.12, 0.12, 0.13] : mul(paint, 0.6));
   const s = d.style;
   const metallicPaint = s.id === 'seventies' ? 0.05 : 0.35;
   const base: Record<Slot, MaterialDef> = {

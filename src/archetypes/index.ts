@@ -38,6 +38,8 @@ export interface Design {
   palette: Palette;
   interiorColor: Vec3;
   headlamp: HeadlampKind;
+  /** optional design features, picked per car */
+  features: { fascia: boolean; scoop: boolean; spoiler: 'none' | 'lip' | 'wing' };
   taillamp: TaillampKind;
   rim: RimKind;
   rimRadius: number;
@@ -281,6 +283,7 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
     trim: 0.022,
     chromeSill: style.chromeSill,
     cladding: g.num('cladding', style.cladding),
+    lowerTone: false,
     twoToneRoof: false,
   };
 
@@ -288,6 +291,14 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
   const pi = paletteIndex ?? g.int('palette', 0, palettes.length - 1);
   const palette = palettes[((pi % palettes.length) + palettes.length) % palettes.length];
   body.twoToneRoof = !!palette.paint2 && g.chance('twoTone', style.twoTone);
+  // two-tone lower body (needs a second colour, and not together with a contrasting roof)
+  body.lowerTone = !body.twoToneRoof && !truck && g.chance('lowerTone', { seventies: 0.15, nineties: 0.3, modern: 0.12 }[style.id]);
+  const car = !truck && type !== 'van';
+  const features = {
+    fascia: g.chance('fascia', { seventies: 0.45, nineties: 0.55, modern: 0.35 }[style.id]),
+    scoop: car && g.chance('scoop', { seventies: 0.2, nineties: 0.08, modern: 0.1 }[style.id]),
+    spoiler: (car && type !== 'estate' ? g.pick('spoiler', { none: 6, lip: 2, wing: style.id === 'seventies' ? 0.5 : 1.5 }) : 'none') as 'none' | 'lip' | 'wing',
+  };
 
   // --- the cargo box (trucks)
   let truckSpec: TruckSpec | undefined;
@@ -314,6 +325,7 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
     type, style, body, doorCount, seats, rows: type === 'van' || truck ? 1 : 2, palette, truck: truckSpec, shiftZ,
     interiorColor: style.interior[g.int('interior', 0, style.interior.length - 1)],
     headlamp: g.pick('headlamp', style.headlamps),
+    features,
     taillamp: g.pick('taillamp', style.taillamps),
     rim: g.pick('rim', style.rims),
     rimRadius,
