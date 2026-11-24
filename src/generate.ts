@@ -20,7 +20,7 @@
  *   └─ Seat_Driver, Exhaust_FX, Camera_Chase … (markers)
  */
 import type { Vec3 } from './core/math.js';
-import { Mesh, faceted } from './core/mesh.js';
+import { Mesh, autoSmooth } from './core/mesh.js';
 import type { Json, Slot, Vehicle } from './core/vehicle.js';
 import { VehicleBuilder } from './core/vehicle.js';
 import { doorCode, makeDesign, type Design } from './archetypes/index.js';
@@ -170,8 +170,8 @@ export function generate(recipe: Recipe): Generated {
   // ------------------------------------------------------------------ markers
   addMarkers(vb, design, body);
 
-  // low-poly look: flat shading everywhere
-  if (sp.detail === 'low') for (const n of vb.nodes) for (const [slot, m] of n.meshes) n.meshes.set(slot, faceted(m));
+  // low-poly look: smooth across gentle angles, hard edges at chamfers and real corners
+  if (sp.detail === 'low') for (const n of vb.nodes) for (const [slot, m] of n.meshes) n.meshes.set(slot, autoSmooth(m, 40));
 
   const vehicle = vb.build({
     wheels: inc.wheels, brakes: inc.brakes, suspension: inc.suspension, lights: inc.lights, interior: inc.interior,

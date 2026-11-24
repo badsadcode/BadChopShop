@@ -227,6 +227,7 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
     blackPillars: g.chance('blackPillars', style.blackPillars),
     bottomCorner: g.num('bottomCorner', style.bottomCorner),
     shoulderIn: g.num('shoulderIn', style.shoulderIn),
+    shoulderRound: g.num('shoulderRound', style.shoulderRound),
     sillIn: g.num('sillIn', style.sillIn),
     sillHeight: 0.018,
     tumblehome: g.num('tumblehome', style.tumblehome) * (type === 'van' ? 0.5 : 1),

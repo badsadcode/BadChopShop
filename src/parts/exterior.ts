@@ -111,8 +111,10 @@ export function buildExterior(vb: VehicleBuilder, d: Design, body: BodyResult): 
   const st = d.style;
   const L = sp.length;
   const zN = L / 2, zT = -L / 2;
-  const noseW = planHalfWidth(sp, zN - sp.noseRound);
-  const tailW = planHalfWidth(sp, zT + sp.tailRound);
+  // half-width of the flat end faces (the rounded ends eat into them); lamps stay on these faces,
+  // because a decal projected onto a corner at a grazing angle smears down the side
+  const noseW = planHalfWidth(sp, zN - sp.noseRound) - sp.noseRound * 0.8;
+  const tailW = planHalfWidth(sp, zT + sp.tailRound) - sp.tailRound * 0.8;
   const lampY = frontLampY(d);
   const low = sp.detail === 'low';
   const seg = low ? 8 : 20;
@@ -153,18 +155,18 @@ export function buildExterior(vb: VehicleBuilder, d: Design, body: BodyResult): 
       }
       case 'flush': {
         // wraps round the corner: centred further out
-        const x = s * noseW * 0.72, w = noseW * 0.5, h = 0.12;
+        const x = s * noseW * 0.64, w = noseW * 0.46, h = 0.12;
         put(vb, 'Lights_Front', 'MAT_Trim', 'MAT_Trim', decal(body, d, 'front', roundedRect(w + 0.03, h + 0.03, 0.035, 1), x, lampY, 0.008));
         put(vb, 'Lights_Front', 'MAT_LightHead', 'MAT_Trim', decal(body, d, 'front', roundedRect(w, h, 0.03, 1), x, lampY, 0.014));
         // amber corner strip
-        put(vb, 'Lights_Front', 'MAT_LightIndicator', 'MAT_Trim', decal(body, d, 'front', roundedRect(0.06, h * 0.8, 0.01, 1), s * noseW * 0.93, lampY, 0.012));
+        put(vb, 'Lights_Front', 'MAT_LightIndicator', 'MAT_Trim', decal(body, d, 'front', roundedRect(0.05, h * 0.8, 0.01, 1), s * noseW * 0.9, lampY, 0.012));
         heads.push({ x, y: lampY });
         break;
       }
       case 'swept': {
         // a slim slanted lamp, higher at the outside, with an LED brow
-        const w = noseW * 0.52, h = 0.075;
-        const x = s * noseW * 0.68;
+        const w = noseW * 0.5, h = 0.075;
+        const x = s * noseW * 0.64;
         const pts: Vec2[] = [[-w / 2, -h / 2 - 0.02 * s], [w / 2, -h / 2 + 0.02 * s], [w / 2, h / 2 + 0.025 * s], [-w / 2, h / 2 - 0.01 * s]];
         const shape = s > 0 ? pts : pts.map(([u, v]) => [u, v] as Vec2);
         put(vb, 'Lights_Front', 'MAT_Trim', 'MAT_Trim', decal(body, d, 'front', inflate(shape, 0.018), x, lampY + 0.02, 0.008));
@@ -219,7 +221,7 @@ export function buildExterior(vb: VehicleBuilder, d: Design, body: BodyResult): 
   const rearPlateY = Math.max(bumperYRear + 0.15, tailY - 0.15);
   put(vb, 'Bumper_Rear', 'MAT_Plate', 'MAT_Trim', decal(body, d, 'rear', plate, 0, rearPlateY, 0.012));
   for (const s of [1, -1]) {
-    const x = s * tailW * 0.75;
+    const x = s * tailW * 0.72;
     if (d.taillamp === 'block') {
       const w = 0.2, h = 0.15;
       put(vb, 'Lights_Rear', 'MAT_Chrome', 'MAT_Chrome', decal(body, d, 'rear', roundedRect(w + 0.025, h + 0.025, 0.01, 1), x, tailY, 0.008));
@@ -227,14 +229,14 @@ export function buildExterior(vb: VehicleBuilder, d: Design, body: BodyResult): 
       put(vb, 'Lights_Rear', 'MAT_LightIndicator', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w * 0.48, h * 0.45, 0.005, 1), x + s * w * 0.26, tailY - h * 0.25, 0.014));
       put(vb, 'Lights_Rear', 'MAT_LightReverse', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w * 0.48, h * 0.45, 0.005, 1), x - s * w * 0.26, tailY - h * 0.25, 0.014));
     } else if (d.taillamp === 'wide') {
-      const w = tailW * 0.55, h = 0.13;
-      const cx = s * tailW * 0.68;
+      const w = tailW * 0.5, h = 0.13;
+      const cx = s * tailW * 0.64;
       put(vb, 'Lights_Rear', 'MAT_LightBrake', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w, h, 0.02, 1), cx, tailY, 0.012));
       put(vb, 'Lights_Rear', 'MAT_LightIndicator', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w * 0.3, h * 0.35, 0.005, 1), cx + s * w * 0.28, tailY - h * 0.22, 0.017));
       put(vb, 'Lights_Rear', 'MAT_LightReverse', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w * 0.3, h * 0.35, 0.005, 1), cx - s * w * 0.1, tailY - h * 0.22, 0.017));
     } else {
-      const w = tailW * 0.42, h = 0.07;
-      const cx = s * tailW * 0.72;
+      const w = tailW * 0.4, h = 0.07;
+      const cx = s * tailW * 0.68;
       put(vb, 'Lights_Rear', 'MAT_LightBrake', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w, h, 0.01, 1), cx, tailY + 0.02, 0.012));
       put(vb, 'Lights_Rear', 'MAT_LightReverse', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w * 0.25, h * 0.5, 0.005, 1), cx - s * w * 0.2, tailY + 0.02, 0.016));
     }

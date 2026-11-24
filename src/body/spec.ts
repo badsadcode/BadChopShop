@@ -73,6 +73,8 @@ export interface BodySpec {
   // section shape
   bottomCorner: number;
   shoulderIn: number;
+  /** radius of the rounded shoulder where the side turns onto the hood, deck or window ledge */
+  shoulderRound: number;
   sillIn: number;
   sillHeight: number;
   /** inward lean of the side glass per metre of glass height */

@@ -420,3 +420,49 @@ export function faceted(src: Mesh): Mesh {
   }
   return m;
 }
+
+/**
+ * Smooth shading with hard edges by angle (like Blender's "auto smooth"): neighbouring faces that
+ * meet at less than `angleDeg` share a normal, sharper corners stay crisp. This is the low-poly
+ * look done right: gentle curves read as curves, chamfers and real corners read as edges.
+ */
+export function autoSmooth(src: Mesh, angleDeg = 48): Mesh {
+  const cosT = Math.cos((angleDeg * Math.PI) / 180);
+  const nTri = src.indices.length / 3;
+  const fn: Vec3[] = [];
+  const area: number[] = [];
+  for (let t = 0; t < nTri; t++) {
+    const a = src.pos(src.indices[3 * t]), b = src.pos(src.indices[3 * t + 1]), c = src.pos(src.indices[3 * t + 2]);
+    const n = cross(sub(b, a), sub(c, a));
+    const l = Math.hypot(n[0], n[1], n[2]);
+    area.push(l);
+    fn.push(l > 1e-14 ? [n[0] / l, n[1] / l, n[2] / l] : [0, 0, 0]);
+  }
+  const key = (p: Vec3): string => `${Math.round(p[0] * 1e5)},${Math.round(p[1] * 1e5)},${Math.round(p[2] * 1e5)}`;
+  const at = new Map<string, number[]>();
+  for (let t = 0; t < nTri; t++) {
+    if (area[t] < 1e-14) continue;
+    for (let k = 0; k < 3; k++) {
+      const kk = key(src.pos(src.indices[3 * t + k]));
+      let list = at.get(kk);
+      if (!list) at.set(kk, (list = []));
+      list.push(t);
+    }
+  }
+  const m = new Mesh();
+  for (let t = 0; t < nTri; t++) {
+    if (area[t] < 1e-14) continue;
+    const ids: number[] = [];
+    for (let k = 0; k < 3; k++) {
+      const vi = src.indices[3 * t + k];
+      const p = src.pos(vi);
+      let n: Vec3 = [0, 0, 0];
+      for (const o of at.get(key(p)) ?? []) {
+        if (dot(fn[o], fn[t]) >= cosT) n = [n[0] + fn[o][0] * area[o], n[1] + fn[o][1] * area[o], n[2] + fn[o][2] * area[o]];
+      }
+      ids.push(m.v(p, normalize(n), [src.uvs[2 * vi], src.uvs[2 * vi + 1]]));
+    }
+    m.indices.push(ids[0], ids[1], ids[2]);
+  }
+  return m;
+}

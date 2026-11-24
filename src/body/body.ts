@@ -10,7 +10,7 @@
  * its mirror image.
  *
  * The section's segments, bottom to top (interval counts for low / high detail):
- *   A bottom (1/3) · B lower corner or wheel well (2/4) · C side (2/6) · D window sill (1/1)
+ *   A bottom (1/3) · B lower corner or wheel well (2/4) · C side (2/6) · S rounded shoulder (2/4) · D window sill (1/1)
  *   E side glass (3/5: trim, glass…, trim) · F roof rail (1/3) · G roof / hood / screens (3/6)
  * Where there is no greenhouse (hood, trunk) D, E and F collapse to a point and G becomes the hood.
  */
@@ -21,15 +21,15 @@ import { Mesh } from '../core/mesh.js';
 import type { Slot } from '../core/vehicle.js';
 import type { BodySpec, Detail } from './spec.js';
 
-type SegId = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
-const SEG_ORDER: SegId[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+type SegId = 'A' | 'B' | 'C' | 'S' | 'D' | 'E' | 'F' | 'G';
+const SEG_ORDER: SegId[] = ['A', 'B', 'C', 'S', 'D', 'E', 'F', 'G'];
 /** smoothing groups: normals are averaged only within a group (creases between groups) */
-const GROUP: Record<SegId, number> = { A: 0, B: 1, C: 1, D: 2, E: 3, F: 4, G: 4 };
+const GROUP: Record<SegId, number> = { A: 0, B: 1, C: 1, S: 1, D: 2, E: 3, F: 4, G: 4 };
 
 /** How many intervals each segment gets: 'low' is the faceted low-poly look, 'high' is smooth. */
 const COUNTS: Record<Detail, Record<SegId, number>> = {
-  low: { A: 1, B: 2, C: 2, D: 1, E: 3, F: 1, G: 3 },
-  high: { A: 3, B: 4, C: 6, D: 1, E: 5, F: 3, G: 6 },
+  low: { A: 1, B: 2, C: 2, S: 2, D: 1, E: 3, F: 1, G: 3 },
+  high: { A: 3, B: 4, C: 6, S: 4, D: 1, E: 5, F: 3, G: 6 },
 };
 
 interface Layout {
@@ -129,13 +129,21 @@ export function section(sp: BodySpec, z: number): Section {
     }
   }
   // C: the side, from the sill (or arch) up to the shoulder, with a little tuck-under
-  const yC0 = arch ? Math.min(archY, L - 0.02) : B + rb;
+  // the shoulder is rounded (S), so the side stops a radius short of the top
+  const sr = Math.max(0.004, Math.min(sp.shoulderRound, (L - B) * 0.25, W * 0.2));
+  const yC0 = arch ? Math.min(archY, L - sr - 0.02) : B + rb;
   for (let k = 1; k <= C.C; k++) {
     const t = k / C.C;
-    pts.push([W - sp.shoulderIn * t * t - sp.tuck * (1 - t) ** 3 * (arch ? 0 : 1), lerp(yC0, L, t)]);
+    pts.push([W - sp.shoulderIn * t * t - sp.tuck * (1 - t) ** 3 * (arch ? 0 : 1), lerp(yC0, L - sr, t)]);
+  }
+  // S: shoulder, a quarter round from the side over onto the top (hood, deck or window ledge)
+  const sx = W - sp.shoulderIn - sr, sy = L - sr;
+  for (let k = 1; k <= C.S; k++) {
+    const ang = (k / C.S) * (Math.PI / 2);
+    pts.push([sx + Math.cos(ang) * sr, sy + Math.sin(ang) * sr]);
   }
   // D: window sill step
-  const xs = W - sp.shoulderIn - sp.sillIn * smoothstep(0, 0.05, G);
+  const xs = W - sp.shoulderIn - sr - sp.sillIn * smoothstep(0, 0.05, G);
   const sillH = Math.min(sp.sillHeight, G * 0.3);
   pts.push([xs, L + sillH]);
   // E: side glass, leaning in (tumblehome), with thin trim bands top and bottom
@@ -192,6 +200,7 @@ function classify(sp: BodySpec, k: number, z: number, sec0: Section, sec1: Secti
   }
   const door = sp.doors.find((d) => z >= d.z0 && z <= d.z1);
   const doorBucket = door ? `door_${door.id}_L` : 'body';
+  if (seg === 'S') return { slot: paint, bucket: glassZone ? doorBucket : 'body' };
   if (seg === 'C') {
     const clad = sp.cladding > 0 && yMid < sec0.B + sp.cladding + 0.12 && local === 0;
     return { slot: clad ? 'MAT_Plastic' : paint, bucket: doorBucket };
@@ -286,7 +295,7 @@ export function buildBody(sp: BodySpec): BodyResult {
   const lay = layout(sp.detail);
   const NPTS = lay.npts;
   const flat = sp.detail === 'low';
-  const ROUND_ROWS = flat ? 1 : 5;
+  const ROUND_ROWS = flat ? 2 : 5;
   for (let k = ROUND_ROWS; k >= 1; k--) {
     const phi = (k / ROUND_ROWS) * (Math.PI / 2);
     tail.push(shrinkSection(main[0], sp.tailRound * (1 - Math.cos(phi)), main[0].z - sp.tailRound * Math.sin(phi)));
