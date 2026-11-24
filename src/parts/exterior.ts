@@ -331,3 +331,45 @@ function buildBumper(vb: VehicleBuilder, d: Design, body: BodyResult, node: stri
   }
   vb.add(node, slot, sweep(path, prof, center));
 }
+
+/**
+ * Wheel-arch lips: a small rolled lip swept round each arch on the body side. It hides the hard
+ * cut-out edge and gives the arch a shape (body colour, or black plastic flares where the era
+ * has plastic cladding).
+ */
+export function buildArchLips(vb: VehicleBuilder, d: Design): void {
+  const sp = d.body;
+  const low = sp.detail === 'low';
+  const Ra = sp.wheelRadius + sp.archGap;
+  const st = d.style.id;
+  const lipH = st === 'seventies' ? 0.03 : st === 'nineties' ? (sp.cladding > 0 ? 0.06 : 0.04) : 0.05;
+  const lipOut = st === 'seventies' ? 0.012 : st === 'nineties' && sp.cladding > 0 ? 0.03 : 0.02;
+  const slot: Slot = sp.cladding > 0 ? 'MAT_Plastic' : 'MAT_Paint';
+  // profile across the lip: [outward along the body side normal (x), along the arch radius (into the body)]
+  const prof: [number, number][] = [[-0.035, -0.004], [lipOut * 0.4, -0.01], [lipOut, lipH * 0.35], [0, lipH]];
+  const steps = low ? 9 : 26;
+  const m = new Mesh();
+  for (const za of [sp.frontAxleZ, sp.rearAxleZ]) {
+    const rows: Vec3[][] = [];
+    for (let k = 0; k <= steps; k++) {
+      const th = 0.12 + ((Math.PI - 0.24) * k) / steps;
+      const z = za + Math.cos(th) * Ra, y = sp.wheelRadius + Math.sin(th) * Ra;
+      if (y < sampleAt(sp.bottom, z) + 0.02) continue;
+      const w = planHalfWidth(sp, z);
+      const rad: Vec3 = [0, Math.sin(th), Math.cos(th)];
+      rows.push(prof.map(([o, r]) => [w + o, y + rad[1] * r, z + rad[2] * r] as Vec3));
+    }
+    for (let i = 0; i + 1 < rows.length; i++) {
+      for (let j = 0; j + 1 < prof.length; j++) {
+        const a = rows[i][j], b = rows[i + 1][j], c = rows[i + 1][j + 1], e = rows[i][j + 1];
+        const mid: Vec3 = [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2, (a[2] + c[2]) / 2];
+        const th = Math.atan2(mid[1] - sp.wheelRadius, mid[2] - za);
+        const facing = normalize([1, -Math.sin(th) * 0.8, -Math.cos(th) * 0.8]);
+        const ia = m.v(a, facing), ib = m.v(b, facing), ic = m.v(c, facing), ie = m.v(e, facing);
+        m.quad(ia, ib, ic, ie, facing);
+      }
+    }
+  }
+  const both = m.clone().merge(m.clone().mirrorX());
+  vb.add('Body', slot, both);
+}

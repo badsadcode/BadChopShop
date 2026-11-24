@@ -26,7 +26,7 @@ import { VehicleBuilder } from './core/vehicle.js';
 import { doorCode, makeDesign, type Design } from './archetypes/index.js';
 import { buildBody, planHalfWidth, type BodyResult } from './body/body.js';
 import { buildWheel } from './parts/wheels.js';
-import { buildExterior } from './parts/exterior.js';
+import { buildArchLips, buildExterior } from './parts/exterior.js';
 import { buildInterior } from './parts/interior.js';
 import { buildMechanicals } from './parts/mechanical.js';
 import { materialsFor } from './materials.js';
@@ -164,6 +164,7 @@ export function generate(recipe: Recipe): Generated {
 
   // ------------------------------------------------------------------ exterior details, interior, mechanicals
   buildExterior(vb, design, body);
+  buildArchLips(vb, design);
   buildInterior(vb, design, body);
   buildMechanicals(vb, design, body, wheels.map((w) => ({ name: `Wheel_${w.id}`, x: SIDE[w.side] * wheelX(w.z), z: w.z, side: SIDE[w.side] })));
 

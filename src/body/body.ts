@@ -395,8 +395,8 @@ export function buildBody(sp: BodySpec): BodyResult {
   }
 
   // end caps (with an upright rear window for estates and vans)
-  const capTail = capMesh(st[0], -1, sp.uprightRear ? sp : null);
-  const capNose = capMesh(st[nS - 1], 1, null);
+  const capTail = capMesh(st[0], -1, sp.uprightRear ? sp : null, sp.tailRound * 0.45);
+  const capNose = capMesh(st[nS - 1], 1, null, sp.noseRound * 0.45);
   for (const [bucket, slot, m] of [...capTail, ...capNose]) {
     const target = bucket === 'glass' ? outL('rear_window', 'MAT_Glass') : outL(sp.uprightRear && bucket === 'trim' ? 'body' : 'body', slot);
     target.merge(m);
@@ -443,18 +443,26 @@ function fullOutline(s: Section): Vec2[] {
  * Close an end of the body. The cap is built as rings shrinking toward the middle, so an upright
  * rear window (a rounded rectangle) can sit in it as real geometry with a trim frame.
  */
-function capMesh(s: Section, dir: 1 | -1, glassFor: BodySpec | null): [string, Slot, Mesh][] {
+function capMesh(s: Section, dir: 1 | -1, glassFor: BodySpec | null, bulge = 0): [string, Slot, Mesh][] {
   const outline = fullOutline(s);
   let top = -Infinity;
   for (const p of outline) top = Math.max(top, p[1]);
   const facing: Vec3 = [0, 0, dir];
   const paint = new Mesh(), glass = new Mesh(), trim = new Mesh();
   if (!glassFor) {
-    // simple fan around the section's middle
+    // a shallow dome rather than a flat slab: an inner ring and the centre stand proud by `bulge`
     const cy = (s.B + top) / 2;
-    const c = paint.v([0, cy, s.z], facing, [0, cy]);
-    const ids = outline.map((p) => paint.v([p[0], p[1], s.z], facing, [p[0], p[1]]));
-    for (let i = 0; i < ids.length; i++) paint.tri(c, ids[i], ids[(i + 1) % ids.length], facing);
+    const ringT = 0.55;
+    const inner = outline.map(([x, y]) => [x * ringT, cy + (y - cy) * ringT] as Vec2);
+    const c = paint.v([0, cy, s.z + dir * bulge], facing, [0, cy]);
+    const o = outline.map((p) => paint.v([p[0], p[1], s.z], facing, [p[0], p[1]]));
+    const ii = inner.map((p) => paint.v([p[0], p[1], s.z + dir * bulge * 0.8], facing, [p[0], p[1]]));
+    for (let i = 0; i < o.length; i++) {
+      const j = (i + 1) % o.length;
+      paint.tri(o[i], o[j], ii[j], facing);
+      paint.tri(o[i], ii[j], ii[i], facing);
+      paint.tri(c, ii[i], ii[j], facing);
+    }
     return [['body', 'MAT_Paint', paint]];
   }
   // rear window rectangle on the back face
