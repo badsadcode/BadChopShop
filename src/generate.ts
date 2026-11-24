@@ -127,6 +127,8 @@ export function generate(recipe: Recipe): Generated {
   vb.add('Body', 'MAT_Trim', body.shutLines);
   // the cabin's inner skin is part of the body, so the car is never see-through, interior or not
   vb.add('Body', 'MAT_Interior', body.liner);
+  // and the engine bay under the hood
+  vb.add('Body', 'MAT_Underbody', body.bay);
   if (inc.collision !== false) vb.setCollision('Body', body.collision);
 
   // ------------------------------------------------------------------ wheels

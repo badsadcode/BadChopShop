@@ -207,10 +207,12 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
 
   if (truck) {
     doorCount = 2;
-    const fLen = Math.min(g.num('doorFront', [0.95, 1.1]), frontEdge - tailZ - 0.12);
-    const f: DoorSpec = { id: 'front', z1: frontEdge, z0: frontEdge - fLen };
+    // cab-over: the door runs right up to the windscreen pillar (over the front wheel), with a big window
+    const dz1 = cowlZ - 0.05;
+    const fLen = Math.min(g.num('doorFront', [0.95, 1.1]), dz1 - tailZ - 0.12);
+    const f: DoorSpec = { id: 'front', z1: dz1, z0: dz1 - fLen };
     doors.push(f);
-    windows.push({ id: 'front', z0: f.z0 + 0.06, z1: winFront, door: 'front' });
+    windows.push({ id: 'front', z0: f.z0 + 0.06, z1: dz1 - 0.05, door: 'front' });
   } else if (type === 'van') {
     doorCount = 3;
     const fLen = g.num('doorFront', [0.95, 1.1]);
@@ -244,6 +246,12 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
       if (r.z1 - 0.06 - rwEnd > 0.15) windows.push({ id: 'rear', z0: rwEnd, z1: r.z1 - 0.06, door: 'rear' });
       if (type === 'estate' && r.z0 - 0.08 - cPillarFront > 0.15) windows.push({ id: 'quarter', z0: cPillarFront, z1: r.z0 - 0.08, door: null });
     }
+  }
+
+  // a fixed front quarter window fills the gap between the windscreen pillar and a door that starts
+  // behind the front wheel (vans especially), instead of a big blank panel
+  if (!truck && cowlZ - 0.06 - (frontEdge + 0.04) > 0.14) {
+    windows.push({ id: 'vent', z0: frontEdge + 0.04, z1: cowlZ - 0.06, door: null });
   }
 
   const body: BodySpec = {
@@ -336,4 +344,4 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
 export type { Vec3 };
 
 /** Short code used in node names: Door_FL, Window_QR … */
-export const doorCode = (id: string): string => ({ front: 'F', rear: 'R', slide: 'S', quarter: 'Q', cargo: 'C' } as Record<string, string>)[id] ?? id[0].toUpperCase();
+export const doorCode = (id: string): string => ({ front: 'F', rear: 'R', slide: 'S', quarter: 'Q', cargo: 'C', vent: 'V' } as Record<string, string>)[id] ?? id[0].toUpperCase();

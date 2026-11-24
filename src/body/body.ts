@@ -75,6 +75,8 @@ export interface BodyResult {
   buckets: Map<string, Map<Slot, Mesh>>;
   /** cabin liner seen through the glass (MAT_Interior) */
   liner: Mesh;
+  /** the engine bay tub under the hood */
+  bay: Mesh;
   /** coarse hull for physics */
   collision: Mesh;
   /** thin dark strips along panel gaps */
@@ -257,7 +259,8 @@ function classify(sp: BodySpec, k: number, z: number, sec0: Section, sec1: Secti
     // the sill strip only where real side glass sits above it; where the greenhouse is just growing out
     // of the hood or the deck (pillar bases) it's bodywork, or it shows up as a shiny wedge
     const tall = Math.min(sec0.H - sec0.L, sec1.H - sec1.L) > 0.08;
-    return { slot: tall ? (sp.chromeSill ? 'MAT_Chrome' : 'MAT_Trim') : paint, bucket: glassZone ? doorBucket : 'body' };
+    const under = sp.windows.find((w) => z >= w.z0 && z <= w.z1);
+    return { slot: tall ? (sp.chromeSill ? 'MAT_Chrome' : 'MAT_Trim') : paint, bucket: under?.door ? `door_${under.door}_L` : 'body' };
   }
   if (seg === 'E') {
     if (!glassZone) return { slot: paint, bucket: 'body' };
@@ -267,9 +270,10 @@ function classify(sp: BodySpec, k: number, z: number, sec0: Section, sec1: Secti
       if (local === 0 || local === lay.counts.E - 1) return { slot: 'MAT_Trim', bucket };
       return { slot: 'MAT_Glass', bucket: `win_${win.id}_L` };
     }
-    // pillars and door frames
+    // pillars stay with the body: only the glass (and the panel under it) swings out with a door,
+    // so an open door never takes a piece of the A- or B-pillar with it
     const nearB = sp.doors.length > 1 && sp.blackPillars && door == null;
-    return { slot: nearB ? 'MAT_Trim' : paint, bucket: doorBucket };
+    return { slot: nearB ? 'MAT_Trim' : paint, bucket: 'body' };
   }
   if (seg === 'F') return { slot: sp.twoToneRoof && glassZone ? 'MAT_Paint2' : paint, bucket: 'body' };
   // G: the top. Windshield, roof, rear window, hood, trunk.
@@ -518,6 +522,7 @@ export function buildBody(sp: BodySpec): BodyResult {
   return {
     buckets,
     liner: buildLiner(sp, main, NPTS),
+    bay: buildBay(sp, main),
     collision: buildCollision(st, lay),
     shutLines: buildShutLines(sp, st),
     rayTris,
@@ -615,6 +620,40 @@ function capMesh(s: Section, dir: 1 | -1, glassFor: BodySpec | null, bulge = 0, 
   return [['body', 'MAT_Paint', paint], ['trim', 'MAT_Trim', trim], ['glass', 'MAT_Glass', glass]];
 }
 
+/**
+ * The engine bay: a tub under the hood (walls between the wheel wells, a floor, the firewall and a
+ * front wall), so an open hood shows a bay with the engine in it, not a hollow shell.
+ */
+function buildBay(sp: BodySpec, main: Section[]): Mesh {
+  const z0 = sp.cowlZ + 0.03, z1 = sp.hoodFrontZ - 0.06;
+  const m = new Mesh();
+  if (z1 - z0 < 0.15) return m;
+  const secs = main.filter((s) => s.z >= z0 && s.z <= z1);
+  if (secs.length < 2) return m;
+  const ring = (s: Section): Vec3[] => {
+    const wx = Math.max(0.2, s.W - sp.wellDepth - 0.03);
+    const top = s.H - 0.035, floor = s.B + 0.1;
+    return [[wx, top, s.z], [wx, floor, s.z], [-wx, floor, s.z], [-wx, top, s.z]];
+  };
+  const rings = secs.map(ring);
+  for (let i = 0; i + 1 < rings.length; i++) {
+    for (let k = 0; k < 3; k++) {
+      const a = rings[i][k], b = rings[i][k + 1], c = rings[i + 1][k + 1], d = rings[i + 1][k];
+      const mid: Vec3 = [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2, (a[2] + c[2]) / 2];
+      const inward: Vec3 = k === 1 ? [0, 1, 0] : [-Math.sign(mid[0]), 0, 0];
+      const ids = [a, b, c, d].map((p) => m.v(p, inward));
+      m.quad(ids[0], ids[1], ids[2], ids[3], inward);
+    }
+  }
+  // firewall (back) and front wall, facing into the bay
+  for (const [r, dir] of [[rings[0], 1], [rings[rings.length - 1], -1]] as [Vec3[], number][]) {
+    const f: Vec3 = [0, 0, dir];
+    const ids = r.map((p) => m.v(p, f));
+    m.quad(ids[0], ids[1], ids[2], ids[3], f);
+  }
+  return m;
+}
+
 /** The inside of the cabin, seen through the glass: the body sections pushed in, faces flipped. */
 function buildLiner(sp: BodySpec, main: Section[], _NPTS: number): Mesh {
   const z1 = sp.cowlZ + 0.05, z0 = Math.max(sp.glassEndZ - 0.05, -sp.length / 2 + 0.15);
@@ -653,8 +692,13 @@ function buildLiner(sp: BodySpec, main: Section[], _NPTS: number): Mesh {
     for (let j = 0; j < NPTS; j++) row.push(m.v([inner[i][j][0], inner[i][j][1], secs[i].z], [0, 1, 0], [j * 0.1, secs[i].z]));
     rows.push(row);
   }
+  const sideFrom = keep.indexOf(lay.start.C), sideTo = keep.indexOf(lay.start.F);
   for (let i = 0; i + 1 < rows.length; i++) {
+    const zm = (secs[i].z + secs[i + 1].z) / 2;
+    const inDoor = sp.doors.some((d) => zm > d.z0 + 0.02 && zm < d.z1 - 0.02);
     for (let j = 0; j + 1 < NPTS; j++) {
+      // the door openings stay open: with a door swung out you see into the cabin, not a wall
+      if (inDoor && j >= sideFrom && j < sideTo) continue;
       // facing inward: toward the cabin centre
       const p = m.pos(rows[i][j]);
       const inward: Vec3 = [-p[0], 0.8 - p[1], 0];
