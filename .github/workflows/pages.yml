@@ -2,7 +2,8 @@ name: Playground (GitHub Pages)
 
 on:
   push:
-    branches: [main]
+    # main once it exists; the working branch is the repo's default branch for now
+    branches: [main, claude/admiring-ritchie-8bnxek]
   workflow_dispatch:
 
 permissions:
