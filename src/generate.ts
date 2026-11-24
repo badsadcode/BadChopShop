@@ -17,7 +17,8 @@
  *   │   ├─ Wheel_FL_Hub (spins about X: tyre, rim)
  *   │   │   └─ Wheel_FL_Disc (brakes)
  *   │   └─ Wheel_FL_Caliper (brakes, steers but does not spin)
- *   └─ Seat_Driver, Exhaust_FX, Camera_Chase … (markers)
+ *   ├─ Seat_Driver, Exhaust_FX, Camera_Chase … (markers)
+ *   └─ trucks: Chassis, Box (→ Door_Cargo or Door_CargoL/R), twin rear wheels
  */
 import type { Vec3 } from './core/math.js';
 import { Mesh, autoSmooth } from './core/mesh.js';
@@ -29,6 +30,7 @@ import { buildWheel } from './parts/wheels.js';
 import { buildArchLips, buildExterior } from './parts/exterior.js';
 import { buildInterior } from './parts/interior.js';
 import { buildMechanicals } from './parts/mechanical.js';
+import { buildTruck, twinOffset } from './parts/truck.js';
 import { materialsFor } from './materials.js';
 import type { Include, Recipe } from './types.js';
 
@@ -129,33 +131,47 @@ export function generate(recipe: Recipe): Generated {
 
   // ------------------------------------------------------------------ wheels
   const R = sp.wheelRadius;
-  const wheelX = (z: number): number => W(z) - sp.tyreWidth / 2 - 0.02;
+  const truck = design.truck;
+  const twin = (front: boolean): boolean => !!truck && !front;
+  // hub x: just inside the body side; a twin pair is centred between its two tyres, under the box's edge
+  const wheelX = (z: number, front = true): number =>
+    twin(front) ? truck!.boxHalfWidth - 0.04 - sp.tyreWidth - twinOffset(sp.tyreWidth) / 2 + sp.tyreWidth / 2 : W(z) - sp.tyreWidth / 2 - 0.02;
   const wheels: { id: string; z: number; side: 'L' | 'R'; front: boolean }[] = [];
   for (const [axle, z] of [['F', sp.frontAxleZ], ['R', sp.rearAxleZ]] as const) {
     for (const side of ['L', 'R'] as const) wheels.push({ id: `${axle}${side}`, z, side, front: axle === 'F' });
   }
   const wheelGeo = buildWheel(R, design.rimRadius, sp.tyreWidth, design.rim, sp.detail === 'low');
   for (const w of wheels) {
-    const x = SIDE[w.side] * wheelX(w.z);
+    const x = SIDE[w.side] * wheelX(w.z, w.front);
     const nm = `Wheel_${w.id}`;
+    const tw = twin(w.front);
     vb.node(nm, {
       parent: 'Body', group: 'wheels', pivot: [x, R, w.z],
       noor: {
         marker: 'vehicle.wheel', id: `w_${w.id.toLowerCase()}`, axle: w.front ? 0 : 1, side: w.side === 'L' ? 'left' : 'right',
-        radius: round(R), width: round(sp.tyreWidth), steer: w.front ? 0.6 : 0, driven: true, brake: true, handbrake: !w.front,
+        radius: round(R), width: round(tw ? sp.tyreWidth + twinOffset(sp.tyreWidth) : sp.tyreWidth), steer: w.front ? (truck ? 0.55 : 0.6) : 0,
+        driven: truck ? !w.front : true, brake: true, handbrake: !w.front, twin: tw,
         suspension: { travel_up: 0.09, travel_down: 0.11 },
         spin_node: `${nm}_Hub`,
       },
     });
-    const place = (m: Mesh): Mesh => {
-      const c = m.clone();
+    const place = (m: Mesh, dx = 0): Mesh => {
+      const c = m.clone().translate([dx, 0, 0]);
       if (w.side === 'R') c.mirrorX();
       return c.translate([x, R, w.z]);
     };
     vb.node(`${nm}_Hub`, { parent: nm, group: 'wheels', pivot: [x, R, w.z], noor: { part: 'wheel', spin: [1, 0, 0] } });
-    vb.add(`${nm}_Hub`, 'MAT_Rubber', place(wheelGeo.tyre));
-    vb.add(`${nm}_Hub`, 'MAT_Rim', place(wheelGeo.rim));
-    vb.add(`${nm}_Hub`, 'MAT_Chrome', place(wheelGeo.chrome));
+    if (tw) {
+      // twin tyres: outer one with the rim face, inner one behind it
+      const off = twinOffset(sp.tyreWidth) / 2;
+      vb.add(`${nm}_Hub`, 'MAT_Rubber', place(wheelGeo.tyre, off).merge(place(wheelGeo.tyre, -off)));
+      vb.add(`${nm}_Hub`, 'MAT_Rim', place(wheelGeo.rim, off).merge(place(wheelGeo.rim, -off)));
+      vb.add(`${nm}_Hub`, 'MAT_Chrome', place(wheelGeo.chrome, off));
+    } else {
+      vb.add(`${nm}_Hub`, 'MAT_Rubber', place(wheelGeo.tyre));
+      vb.add(`${nm}_Hub`, 'MAT_Rim', place(wheelGeo.rim));
+      vb.add(`${nm}_Hub`, 'MAT_Chrome', place(wheelGeo.chrome));
+    }
     vb.node(`${nm}_Disc`, { parent: `${nm}_Hub`, group: 'brakes', pivot: [x, R, w.z], noor: { part: 'brakes' } });
     vb.add(`${nm}_Disc`, 'MAT_Metal', place(wheelGeo.disc));
     vb.node(`${nm}_Caliper`, { parent: nm, group: 'brakes', pivot: [x, R, w.z], noor: { part: 'brakes' } });
@@ -166,10 +182,14 @@ export function generate(recipe: Recipe): Generated {
   buildExterior(vb, design, body);
   buildArchLips(vb, design);
   buildInterior(vb, design, body);
-  buildMechanicals(vb, design, body, wheels.map((w) => ({ name: `Wheel_${w.id}`, x: SIDE[w.side] * wheelX(w.z), z: w.z, side: SIDE[w.side] })));
+  buildMechanicals(vb, design, body, wheels.map((w) => ({ name: `Wheel_${w.id}`, x: SIDE[w.side] * wheelX(w.z, w.front), z: w.z, side: SIDE[w.side] })));
+  buildTruck(vb, design);
 
   // ------------------------------------------------------------------ markers
   addMarkers(vb, design, body);
+
+  // trucks are built in the cab's frame: slide everything so the whole footprint is centred on z = 0
+  if (design.shiftZ) vb.get('Body').translation[2] += design.shiftZ;
 
   // low-poly look: smooth across gentle angles, hard edges at chamfers and real corners
   if (sp.detail === 'low') for (const n of vb.nodes) for (const [slot, m] of n.meshes) n.meshes.set(slot, autoSmooth(m, 40));
@@ -178,7 +198,6 @@ export function generate(recipe: Recipe): Generated {
     wheels: inc.wheels, brakes: inc.brakes, suspension: inc.suspension, lights: inc.lights, interior: inc.interior,
     engine: inc.engine, battery: inc.battery, exhaust: inc.exhaust, markers: inc.markers, collision: inc.collision,
   });
-  if (inc.wheels === false) for (const n of vehicle.nodes) void n;
   return { vehicle, design, recipe, body };
 }
 
@@ -200,7 +219,7 @@ function addMarkers(vb: VehicleBuilder, d: Design, body: BodyResult): void {
     seat('Seat_RearL', sx, rz, 'passenger', 2, d.doorCount > 2 ? 'door_rl' : 'door_fl');
     seat('Seat_RearR', -sx, rz, 'passenger', 3, d.doorCount > 2 ? 'door_rr' : 'door_fr');
   }
-  const tail = -sp.length / 2;
+  const tail = d.truck ? d.truck.boxRear : -sp.length / 2;
   vb.node('Exhaust_FX', { parent: 'Body', group: 'markers', pivot: [-sp.halfWidth * 0.55, sp.bottom[0][1] - 0.04, tail - 0.02], noor: { marker: 'fx', id: 'exhaust', effect: 'exhaust', tags: ['dir:-z'] } });
   vb.node('Camera_Chase', { parent: 'Body', group: 'markers', pivot: [0, sp.top.reduce((a, p) => Math.max(a, p[1]), 0) + 1.2, tail - 4.5], noor: { marker: 'camera', id: 'chase', role: 'chase', fov: 1.05 } });
   vb.node('Sound_Engine', { parent: 'Body', group: 'markers', pivot: [0, 0.7, sp.length / 2 - 0.6], noor: { marker: 'audio.emitter', id: 'engine', sound: 'engine', radius: 40 } });

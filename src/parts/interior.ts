@@ -32,7 +32,7 @@ export function buildInterior(vb: VehicleBuilder, d: Design, body: BodyResult): 
 
   const sx = sp.halfWidth * 0.42;
   const seatW = Math.min(0.52, innerW * 0.75);
-  if (d.type === 'van') {
+  if (d.type === 'van' || d.type === 'truck') {
     vb.add('Interior', 'MAT_Seat', seat(sx, floorY, seatZ, seatW));
     vb.add('Interior', 'MAT_Seat', seat(-sx * 0.75, floorY, seatZ, innerW * 1.05, true));
     // bulkhead between the cab and the cargo area

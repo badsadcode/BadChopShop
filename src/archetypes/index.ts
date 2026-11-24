@@ -11,8 +11,22 @@ import type { BodySpec, Detail, DoorSpec, WindowSpec } from '../body/spec.js';
 import type { HeadlampKind, Palette, Range, RimKind, StyleId, StyleProfile, TaillampKind } from '../styles/index.js';
 import { STYLES } from '../styles/index.js';
 
-export type ArchetypeId = 'hatchback' | 'sedan' | 'estate' | 'van';
-export const ARCHETYPE_IDS: ArchetypeId[] = ['hatchback', 'sedan', 'estate', 'van'];
+export type ArchetypeId = 'hatchback' | 'sedan' | 'estate' | 'van' | 'truck';
+export const ARCHETYPE_IDS: ArchetypeId[] = ['hatchback', 'sedan', 'estate', 'van', 'truck'];
+
+/** A box truck: the lofted body is only the cab; the cargo box, chassis and twin rear axle come from parts/truck.ts. */
+export interface TruckSpec {
+  /** z of the box's front and rear faces (vehicle frame of the cab, before centring) */
+  boxFront: number;
+  boxRear: number;
+  boxHalfWidth: number;
+  floorY: number;
+  boxTop: number;
+  /** 'white' | 'silver' | 'paint' */
+  boxColor: string;
+  /** roll-up shutter or two barn doors at the back */
+  rearDoor: 'shutter' | 'barn';
+}
 
 export interface Design {
   type: ArchetypeId;
@@ -29,6 +43,10 @@ export interface Design {
   rimRadius: number;
   /** genes actually used, for the recipe/manifest */
   genes: Record<string, number | string | boolean>;
+  /** box trucks only */
+  truck?: TruckSpec;
+  /** how far the whole vehicle is moved along z so its footprint is centred (trucks; 0 for cars) */
+  shiftZ: number;
 }
 
 interface ArchetypeDims {
@@ -47,6 +65,8 @@ const DIMS: Record<ArchetypeId, ArchetypeDims> = {
   sedan: { length: [4.35, 4.8], width: [1.68, 1.82], roof: [1.38, 1.45], wheelbase: [2.55, 2.8], frontOverhang: [0.82, 0.98], hood: [1.08, 1.28], belt: [0.88, 0.95], noseTop: [0.64, 0.72] },
   estate: { length: [4.4, 4.85], width: [1.7, 1.82], roof: [1.42, 1.5], wheelbase: [2.58, 2.8], frontOverhang: [0.82, 0.96], hood: [1.02, 1.2], belt: [0.9, 0.96], noseTop: [0.65, 0.73] },
   van: { length: [4.7, 5.2], width: [1.84, 1.96], roof: [1.95, 2.25], wheelbase: [2.95, 3.3], frontOverhang: [0.75, 0.9], hood: [0.5, 0.7], belt: [1.02, 1.1], noseTop: [0.8, 0.92] },
+  // truck: `length` is the CAB only; the box is added behind it
+  truck: { length: [2.25, 2.6], width: [1.98, 2.12], roof: [2.35, 2.6], wheelbase: [3.3, 4.1], frontOverhang: [0.95, 1.15], hood: [0.3, 0.75], belt: [1.32, 1.45], noseTop: [1.0, 1.12] },
 };
 
 /** Gene overrides: recipe.set pins any gene by name. */
@@ -92,12 +112,13 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
   const width = g.num('width', d.width) * Math.sqrt(size);
   const halfWidth = width / 2;
   const roofY = g.num('roof', d.roof) * g.num('roofScale', style.roofScale);
-  const wheelbase = Math.min(length * 0.66, g.num('wheelbase', d.wheelbase) * size);
+  const truck = type === 'truck';
+  const wheelbase = truck ? g.num('wheelbase', d.wheelbase) : Math.min(length * 0.66, g.num('wheelbase', d.wheelbase) * size);
   const frontOverhang = g.num('frontOverhang', d.frontOverhang) * size;
-  const wheelRadius = g.num('wheelRadius', style.wheelRadius) * (type === 'van' ? 1.04 : 1);
-  const tyreWidth = g.num('tyreWidth', style.tyreWidth) * (type === 'van' ? 1.05 : 1);
+  const wheelRadius = g.num('wheelRadius', style.wheelRadius) * (type === 'van' ? 1.04 : truck ? 1.28 : 1);
+  const tyreWidth = g.num('tyreWidth', style.tyreWidth) * (type === 'van' ? 1.05 : truck ? 1.1 : 1);
   const rimRadius = wheelRadius * g.num('rimRatio', style.rimRatio);
-  const clearance = g.num('clearance', style.clearance) * (type === 'van' ? 1.15 : 1);
+  const clearance = g.num('clearance', style.clearance) * (type === 'van' ? 1.15 : truck ? 2.6 : 1);
 
   const noseZ = length / 2, tailZ = -length / 2;
   const frontAxleZ = noseZ - frontOverhang;
@@ -110,7 +131,7 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
 
   const hoodLen = g.num('hood', d.hood) * size;
   const cowlZ = noseZ - hoodLen;
-  const rake = g.num('windshieldRake', style.windshieldRake) * (type === 'van' ? 0.6 : 1);
+  const rake = g.num('windshieldRake', style.windshieldRake) * (type === 'van' ? 0.6 : truck ? 0.4 : 1);
   const windshieldTopZ = cowlZ - (roofY - beltF) * rake;
   const noseTop = g.num('noseTop', d.noseTop) * (style.id === 'modern' ? 1.03 : 1);
   const hoodFrontY = Math.min(beltF - 0.04, noseTop + 0.06);
@@ -147,8 +168,8 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
     push(tailZ + 0.06, hatchBottom + 0.03, 0.04);
     push(roofRearZ, roofY - 0.02, 0.14);
   } else {
-    // estate and van: roof runs to the back, upright tailgate with the window on the back face
-    const drop = type === 'van' ? 0.02 : g.num('roofDrop', [0.02, 0.06]);
+    // estate, van and truck cab: roof runs to the back, upright back face (with the window on it)
+    const drop = type === 'van' || truck ? 0.02 : g.num('roofDrop', [0.02, 0.06]);
     roofRearZ = tailZ + 0.02;
     glassEndZ = tailZ - 1e-3;
     tailTopY = roofY - drop;
@@ -158,7 +179,7 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
     push(tailZ + 0.08, roofY - drop, 0.05);
   }
   // roof and windshield
-  const roofFrontR = type === 'van' ? 0.18 : g.num('roofFrontR', [0.1, 0.22]);
+  const roofFrontR = type === 'van' || truck ? 0.18 : g.num('roofFrontR', [0.1, 0.22]);
   push(windshieldTopZ, roofY, roofFrontR);
   push(cowlZ, beltAt(cowlZ), 0);
   push(hoodFrontZ, hoodFrontY, 0.07);
@@ -170,7 +191,7 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
   const bottom = sortByX([
     [tailZ, tailBottom], [tailZ + 0.3, clearance + 0.03], [rearAxleZ, clearance], [frontAxleZ, clearance],
     [noseZ - 0.32, clearance + 0.02], [noseZ, noseBottom],
-  ]);
+  ].filter((p) => p[0] >= tailZ - 1e-6) as Vec2[]);
   const belt: Vec2[] = sortByX([[tailZ - 0.01, beltAt(tailZ - 0.01)], [cowlZ, beltAt(cowlZ)], [noseZ, beltAt(noseZ)]]);
 
   // --- doors and windows
@@ -182,7 +203,13 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
   const winFront = Math.min(cowlZ - 0.06, frontEdge - 0.05);
   let doorCount = 4;
 
-  if (type === 'van') {
+  if (truck) {
+    doorCount = 2;
+    const fLen = Math.min(g.num('doorFront', [0.95, 1.1]), frontEdge - tailZ - 0.12);
+    const f: DoorSpec = { id: 'front', z1: frontEdge, z0: frontEdge - fLen };
+    doors.push(f);
+    windows.push({ id: 'front', z0: f.z0 + 0.06, z1: winFront, door: 'front' });
+  } else if (type === 'van') {
     doorCount = 3;
     const fLen = g.num('doorFront', [0.95, 1.1]);
     const f: DoorSpec = { id: 'front', z1: frontEdge, z0: frontEdge - fLen };
@@ -230,7 +257,7 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
     shoulderRound: g.num('shoulderRound', style.shoulderRound),
     sillIn: g.num('sillIn', style.sillIn),
     sillHeight: 0.018,
-    tumblehome: g.num('tumblehome', style.tumblehome) * (type === 'van' ? 0.5 : 1),
+    tumblehome: g.num('tumblehome', style.tumblehome) * (type === 'van' ? 0.5 : truck ? 0.35 : 1),
     roofCorner: g.num('roofCorner', style.roofCorner),
     roofCrown: g.num('roofCrown', style.roofCrown),
     hoodCrown: g.num('hoodCrown', style.hoodCrown),
@@ -252,9 +279,29 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
   const palette = palettes[((pi % palettes.length) + palettes.length) % palettes.length];
   body.twoToneRoof = !!palette.paint2 && g.chance('twoTone', style.twoTone);
 
-  const seats = type === 'van' ? 3 : doorCount === 2 ? 4 : 5;
+  // --- the cargo box (trucks)
+  let truckSpec: TruckSpec | undefined;
+  let shiftZ = 0;
+  if (truck) {
+    const rearOverhang = g.num('rearOverhang', [0.9, 1.5]);
+    const boxRear = rearAxleZ - rearOverhang;
+    const floorY = wheelRadius * 2 + 0.16;
+    truckSpec = {
+      boxFront: tailZ - 0.08,
+      boxRear,
+      boxHalfWidth: halfWidth + g.num('boxOverhang', [0.03, 0.12]),
+      floorY,
+      boxTop: Math.max(roofY + 0.2, floorY + g.num('boxHeight', [1.8, 2.15])),
+      boxColor: g.pick('boxColor', { white: 3, silver: 1, paint: 1 }),
+      rearDoor: g.pick('rearDoor', { shutter: 2, barn: 1 }),
+    };
+    // centre the whole footprint (cab nose to the rear underrun bar) on z = 0
+    shiftZ = -(noseZ + boxRear - 0.06) / 2;
+  }
+
+  const seats = type === 'van' || truck ? 3 : doorCount === 2 ? 4 : 5;
   return {
-    type, style, body, doorCount, seats, rows: type === 'van' ? 1 : 2, palette,
+    type, style, body, doorCount, seats, rows: type === 'van' || truck ? 1 : 2, palette, truck: truckSpec, shiftZ,
     interiorColor: style.interior[g.int('interior', 0, style.interior.length - 1)],
     headlamp: g.pick('headlamp', style.headlamps),
     taillamp: g.pick('taillamp', style.taillamps),

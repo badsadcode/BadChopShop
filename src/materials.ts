@@ -37,6 +37,10 @@ export function materialsFor(d: Design, overrides: Partial<Record<Slot, Partial<
     MAT_LightIndicator: { color: [0.85, 0.45, 0.05], metallic: 0, roughness: 0.15, emissive: [1, 0.55, 0.05] },
     MAT_LightReverse: { color: [0.85, 0.86, 0.88], metallic: 0, roughness: 0.12, emissive: [1, 1, 1] },
     MAT_Plate: { color: [0.92, 0.92, 0.9], metallic: 0, roughness: 0.5 },
+    // cargo box of a truck: white, aluminium, or the cab's paint
+    MAT_Box: d.truck?.boxColor === 'paint' ? { color: paint, metallic: metallicPaint, roughness: 0.4 }
+      : d.truck?.boxColor === 'silver' ? { color: [0.72, 0.74, 0.76], metallic: 0.6, roughness: 0.4 }
+        : { color: [0.9, 0.9, 0.88], metallic: 0.05, roughness: 0.55 },
   };
   for (const [k, v] of Object.entries(overrides)) {
     const slot = k as Slot;

@@ -15,7 +15,7 @@ import { Mesh } from './mesh.js';
 export const SLOTS = [
   'MAT_Paint', 'MAT_Paint2', 'MAT_Trim', 'MAT_Chrome', 'MAT_Plastic', 'MAT_Rubber', 'MAT_Rim', 'MAT_Glass',
   'MAT_Interior', 'MAT_Seat', 'MAT_Underbody', 'MAT_Engine', 'MAT_Metal', 'MAT_Brake',
-  'MAT_LightHead', 'MAT_LightBrake', 'MAT_LightIndicator', 'MAT_LightReverse', 'MAT_Plate',
+  'MAT_LightHead', 'MAT_LightBrake', 'MAT_LightIndicator', 'MAT_LightReverse', 'MAT_Plate', 'MAT_Box',
 ] as const;
 export type Slot = (typeof SLOTS)[number];
 

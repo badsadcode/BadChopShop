@@ -55,8 +55,9 @@ export function buildMechanicals(vb: VehicleBuilder, d: Design, body: BodyResult
   vb.add('Battery', 'MAT_Metal', box([bx + 0.05, by + 0.195, bz - 0.08], [0.03, 0.03, 0.03]));
 
   // ------------------------------------------------------------------ exhaust
-  const tailZ = -sp.length / 2;
-  const under = (z: number): number => sampleAt(sp.bottom, z) - 0.035;
+  // trucks: the exhaust runs along the chassis and exits just ahead of the rear wheels
+  const tailZ = d.truck ? sp.rearAxleZ + sp.wheelRadius + 0.35 : -sp.length / 2;
+  const under = (z: number): number => (d.truck ? sp.wheelRadius + 0.05 : sampleAt(sp.bottom, z) - 0.035);
   const ex = -sp.halfWidth * 0.55;
   const path: Vec3[] = [];
   const zStart = ez - 0.1;
@@ -100,7 +101,9 @@ export function buildMechanicals(vb: VehicleBuilder, d: Design, body: BodyResult
   const zones: [string, Vec3, Vec3, string][] = [
     ['Zone_Engine', [0, floor + blockH / 2, ez], [blockW, blockH, blockL], 'engine'],
     ['Zone_Battery', [bx, by + 0.09, bz], [0.18, 0.18, 0.26], 'battery'],
-    ['Zone_Fuel', [0, sampleAt(sp.bottom, sp.rearAxleZ + 0.4) + 0.15, sp.rearAxleZ + 0.4], [0.7, 0.22, 0.45], 'fuel'],
+    d.truck
+      ? ['Zone_Fuel', [0.72, sp.wheelRadius + 0.1, (sp.rearAxleZ + d.truck.boxFront) / 2 + 0.2], [0.75, 0.44, 0.44], 'fuel']
+      : ['Zone_Fuel', [0, sampleAt(sp.bottom, sp.rearAxleZ + 0.4) + 0.15, sp.rearAxleZ + 0.4], [0.7, 0.22, 0.45], 'fuel'],
   ];
   for (const [name, p, size, zone] of zones) {
     vb.node(name, { parent: 'Body', group: 'markers', pivot: p, noor: { marker: 'vehicle.zone', id: zone, zone, size } });

@@ -69,31 +69,33 @@ export function buildManifest(g: Generated, opts: ManifestOptions): { [k: string
     .map((k) => [k, (recipe.include as Record<string, boolean> | undefined)?.[k] !== false]));
 
   // Suggested driving values (Baltic Drive cars.json field names; games tune them)
-  const mass = Math.round({ hatchback: 950, sedan: 1200, estate: 1300, van: 1750 }[d.type] * (sp.length / { hatchback: 3.9, sedan: 4.55, estate: 4.6, van: 4.95 }[d.type]) * (d.style.id === 'modern' ? 1.18 : d.style.id === 'nineties' ? 1.05 : 1));
+  const lengthAll = max[2] - min[2];
+  const mass = Math.round({ hatchback: 950, sedan: 1200, estate: 1300, van: 1750, truck: 4800 }[d.type] * (lengthAll / { hatchback: 3.9, sedan: 4.55, estate: 4.6, van: 4.95, truck: 7.2 }[d.type]) * (d.style.id === 'modern' ? 1.18 : d.style.id === 'nineties' ? 1.05 : 1));
   const power = Math.round(mass * ({ seventies: 5.6, nineties: 6.6, modern: 7.4 }[d.style.id]));
   const vehicleBlock: { [k: string]: Json } = {
     v: 1,
     class: d.type,
     mass,
-    center_of_mass: [0, r4(sp.wheelRadius + 0.22), r4((sp.frontAxleZ + sp.rearAxleZ) / 2 + 0.1)],
-    drive: d.style.id === 'seventies' && d.type !== 'hatchback' ? 'rear' : 'front',
+    center_of_mass: [0, r4(sp.wheelRadius + (d.truck ? 0.55 : 0.22)), r4((sp.frontAxleZ + sp.rearAxleZ) / 2 + d.shiftZ + (d.truck ? 0.3 : 0.1))],
+    drive: d.truck || (d.style.id === 'seventies' && d.type !== 'hatchback') ? 'rear' : 'front',
     power,
-    top_kmh: { seventies: 145, nineties: 175, modern: 195 }[d.style.id] - (d.type === 'van' ? 30 : 0),
+    top_kmh: { seventies: 145, nineties: 175, modern: 195 }[d.style.id] - (d.type === 'van' ? 30 : d.truck ? 55 : 0),
     grip: { front: d.style.id === 'modern' ? 1.8 : 1.6, rear: d.style.id === 'modern' ? 1.7 : 1.5 },
     steer: 0.6,
     brakes: Math.round(mass / 30),
     suspension: { stiffness: d.style.id === 'seventies' ? 26 : 32, damping: [2.6, 3.6] },
     engine: 'front',
-    tank_l: d.type === 'van' ? 70 : 45 + (d.style.id === 'modern' ? 5 : 0),
-    consumption_l100km: d.type === 'van' ? 11 : { seventies: 9.5, nineties: 7.5, modern: 6 }[d.style.id],
-    boot_kg: { hatchback: 50, sedan: 80, estate: 120, van: 400 }[d.type],
+    tank_l: d.truck ? 150 : d.type === 'van' ? 70 : 45 + (d.style.id === 'modern' ? 5 : 0),
+    consumption_l100km: d.truck ? 18 : d.type === 'van' ? 11 : { seventies: 9.5, nineties: 7.5, modern: 6 }[d.style.id],
+    boot_kg: { hatchback: 50, sedan: 80, estate: 120, van: 400, truck: 3000 }[d.type],
     seats: d.seats,
     doors: d.doorCount,
-    wheels: 4,
+    wheels: d.truck ? 6 : 4,
     tracks: 0,
     dimensions: {
       length: r4(max[2] - min[2]), width: r4(max[0] - min[0]), height: r4(max[1] - min[1]),
-      wheelbase: r4(sp.wheelbase), track_front: r4(2 * (sp.halfWidth - sp.tyreWidth / 2 - 0.02)), track_rear: r4(2 * (sp.halfWidth - sp.tyreWidth / 2 - 0.02)),
+      wheelbase: r4(sp.wheelbase), track_front: r4(2 * (sp.halfWidth - sp.tyreWidth / 2 - 0.02)),
+      track_rear: r4(2 * (d.truck ? d.truck.boxHalfWidth - 0.04 - sp.tyreWidth : sp.halfWidth - sp.tyreWidth / 2 - 0.02)),
       wheel_radius: r4(sp.wheelRadius),
     },
   };
@@ -113,7 +115,7 @@ export function buildManifest(g: Generated, opts: ManifestOptions): { [k: string
     lods: [{ level: 0, triangles: tris }],
     collision: included.collision ? 'convex' : 'none',
     markers,
-    tags: ['vehicle', 'car', d.type, d.style.id, 'low-poly'].filter((t) => t !== 'low-poly' || sp.detail === 'low'),
+    tags: ['vehicle', d.truck ? 'truck' : 'car', d.type, d.style.id, 'low-poly'].filter((t) => t !== 'low-poly' || sp.detail === 'low'),
     license: { spdx: 'MIT', author: 'Bad Ideas Works', attribution: '' },
     validation: opts.validation ?? { gltf_validator: 'not_run' },
     vehicle: vehicleBlock,

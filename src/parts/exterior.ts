@@ -206,7 +206,9 @@ export function buildExterior(vb: VehicleBuilder, d: Design, body: BodyResult): 
   const bumperYFront = lampY - (st.bumper === 'chrome' ? 0.25 : 0.27);
   const bumperYRear = sampleAt(sp.bottom, zT) + 0.17;
   buildBumper(vb, d, body, 'Bumper_Front', 1, bumperYFront);
-  buildBumper(vb, d, body, 'Bumper_Rear', -1, bumperYRear);
+  // trucks: the back end belongs to the cargo box (parts/truck.ts)
+  const carRear = !d.truck;
+  if (carRear) buildBumper(vb, d, body, 'Bumper_Rear', -1, bumperYRear);
 
   // ------------------------------------------------------------------ number plates
   const plate = roundedRect(0.5, 0.11, 0.01, 1);
@@ -219,8 +221,8 @@ export function buildExterior(vb: VehicleBuilder, d: Design, body: BodyResult): 
   const beltRear = sampleAt(sp.belt, zT + 0.02);
   const tailY = Math.min(tailTop - 0.12, beltRear - 0.06);
   const rearPlateY = Math.max(bumperYRear + 0.15, tailY - 0.15);
-  put(vb, 'Bumper_Rear', 'MAT_Plate', 'MAT_Trim', decal(body, d, 'rear', plate, 0, rearPlateY, 0.012));
-  for (const s of [1, -1]) {
+  if (carRear) put(vb, 'Bumper_Rear', 'MAT_Plate', 'MAT_Trim', decal(body, d, 'rear', plate, 0, rearPlateY, 0.012));
+  for (const s of carRear ? [1, -1] : []) {
     const x = s * tailW * 0.72;
     if (d.taillamp === 'block') {
       const w = 0.2, h = 0.15;
@@ -241,7 +243,7 @@ export function buildExterior(vb: VehicleBuilder, d: Design, body: BodyResult): 
       put(vb, 'Lights_Rear', 'MAT_LightReverse', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w * 0.25, h * 0.5, 0.005, 1), cx - s * w * 0.2, tailY + 0.02, 0.016));
     }
   }
-  if (d.taillamp === 'bar') {
+  if (carRear && d.taillamp === 'bar') {
     put(vb, 'Lights_Rear', 'MAT_LightBrake', 'MAT_Trim', decal(body, d, 'rear', roundedRect(tailW * 0.6, 0.02, 0.005, 1), 0, tailY + 0.045, 0.012));
   }
 
@@ -257,9 +259,16 @@ export function buildExterior(vb: VehicleBuilder, d: Design, body: BodyResult): 
     const mname = `Mirror_${side}`;
     vb.node(mname, { parent: doorNode, group: 'body', pivot: [s * sx, my, mz], noor: { part: 'mirror' } });
     const mslot: Slot = st.id === 'seventies' ? 'MAT_Chrome' : st.id === 'nineties' ? 'MAT_Plastic' : 'MAT_Paint';
-    vb.add(mname, mslot, box([s * (sx + 0.11), my + 0.03, mz - 0.02], [0.17, 0.11, 0.07], low ? 0.012 : 0.02));
-    vb.add(mname, 'MAT_Plastic', box([s * (sx + 0.03), my, mz], [0.07, 0.03, 0.05]));
-    vb.add(mname, 'MAT_Chrome', box([s * (sx + 0.11), my + 0.03, mz - 0.057], [0.14, 0.085, 0.006]));
+    if (d.truck) {
+      // tall truck mirror on an arm, so the driver can see past the box
+      vb.add(mname, 'MAT_Plastic', box([s * (sx + 0.1), my + 0.05, mz], [0.2, 0.03, 0.03]));
+      vb.add(mname, 'MAT_Plastic', box([s * (sx + 0.22), my + 0.12, mz - 0.02], [0.05, 0.36, 0.14], low ? 0.01 : 0.015));
+      vb.add(mname, 'MAT_Chrome', box([s * (sx + 0.22), my + 0.12, mz - 0.093], [0.04, 0.32, 0.005]));
+    } else {
+      vb.add(mname, mslot, box([s * (sx + 0.11), my + 0.03, mz - 0.02], [0.17, 0.11, 0.07], low ? 0.012 : 0.02));
+      vb.add(mname, 'MAT_Plastic', box([s * (sx + 0.03), my, mz], [0.07, 0.03, 0.05]));
+      vb.add(mname, 'MAT_Chrome', box([s * (sx + 0.11), my + 0.03, mz - 0.057], [0.14, 0.085, 0.006]));
+    }
 
     // door handles near the rear edge of each hinged door
     for (const door of sp.doors) {
@@ -275,7 +284,7 @@ export function buildExterior(vb: VehicleBuilder, d: Design, body: BodyResult): 
   // light markers for games (which slot to switch on)
   const markers: [string, Vec3, string, string][] = [];
   for (const h of heads) markers.push([`Light_Head${h.x > 0 ? 'L' : 'R'}`, [h.x, h.y, zN], 'head', 'MAT_LightHead']);
-  markers.push(['Light_BrakeL', [tailW * 0.75, tailY, zT], 'brake', 'MAT_LightBrake'], ['Light_BrakeR', [-tailW * 0.75, tailY, zT], 'brake', 'MAT_LightBrake']);
+  if (carRear) markers.push(['Light_BrakeL', [tailW * 0.75, tailY, zT], 'brake', 'MAT_LightBrake'], ['Light_BrakeR', [-tailW * 0.75, tailY, zT], 'brake', 'MAT_LightBrake']);
   for (const [name, p, role, material] of markers) {
     vb.node(name, { parent: 'Lights_Front', group: 'lights', pivot: p, noor: { marker: 'light', id: name.toLowerCase(), role, material, tags: [p[2] > 0 ? 'dir:+z' : 'dir:-z'] } });
   }
@@ -350,6 +359,7 @@ export function buildArchLips(vb: VehicleBuilder, d: Design): void {
   const steps = low ? 9 : 26;
   const m = new Mesh();
   for (const za of [sp.frontAxleZ, sp.rearAxleZ]) {
+    if (Math.abs(za) > sp.length / 2) continue; // truck rear axle: under the box, not the cab
     const rows: Vec3[][] = [];
     for (let k = 0; k <= steps; k++) {
       const th = 0.12 + ((Math.PI - 0.24) * k) / steps;
