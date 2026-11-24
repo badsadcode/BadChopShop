@@ -22,13 +22,15 @@ import type { Slot } from '../core/vehicle.js';
 import type { BodySpec, Detail } from './spec.js';
 
 type SegId = 'A' | 'B' | 'C' | 'S' | 'D' | 'E' | 'F' | 'G';
+/** low-poly shading: faceted, merging only nearly coplanar faces (true), or bands smooth along the car (false) */
+const TRUE_FLAT = true;
 const SEG_ORDER: SegId[] = ['A', 'B', 'C', 'S', 'D', 'E', 'F', 'G'];
 /** smoothing groups: normals are averaged only within a group (creases between groups) */
 const GROUP: Record<SegId, number> = { A: 0, B: 1, C: 1, S: 1, D: 2, E: 3, F: 4, G: 4 };
 
 /** How many intervals each segment gets: 'low' is the faceted low-poly look, 'high' is smooth. */
 const COUNTS: Record<Detail, Record<SegId, number>> = {
-  low: { A: 1, B: 2, C: 4, S: 2, D: 1, E: 3, F: 2, G: 5 },
+  low: { A: 1, B: 2, C: 4, S: 2, D: 1, E: 3, F: 2, G: 4 },
   high: { A: 3, B: 4, C: 8, S: 4, D: 1, E: 5, F: 3, G: 8 },
 };
 
@@ -202,7 +204,7 @@ export function section(sp: BodySpec, z: number): Section {
   const endFade = (1 - smoothstep(sp.hoodFrontZ - 0.4, sp.hoodFrontZ - 0.05, z)) * smoothstep(-sp.length / 2 + 0.1, -sp.length / 2 + 0.45, z);
   const lid = (1 - smoothstep(0, 0.2, G)) * (z > 0 ? 1 : 0.4) * endFade;
   const a2 = Math.min(0.15, sp.trim / xg);
-  const gT = C.G === 5 ? [a2, 0.16, 0.42, 0.68, 1] : (() => {
+  const gT = C.G === 4 ? [a2, 0.2, 0.58, 1] : (() => {
     const o = [a2];
     for (let k = 1; k < C.G; k++) o.push(a2 + ((1 - a2) * k) / (C.G - 1));
     return o;
@@ -291,7 +293,8 @@ function stationZs(sp: BodySpec): number[] {
   const zs: number[] = [z0, z1];
   const Ra = sp.wheelRadius + sp.archGap;
   // arches: stations at even angles round the arch, so it comes out as a regular polygon
-  const archSteps = low ? 6 : 24;
+  // low-poly: a 4-step (half-octagon) arch, the classic hand-modelled shape
+  const archSteps = low ? 4 : 24;
   for (const za of [sp.frontAxleZ, sp.rearAxleZ]) {
     for (let k = 0; k <= archSteps; k++) zs.push(za + Math.cos((k / archSteps) * Math.PI) * Ra * (k === 0 || k === archSteps ? 0.999 : 1));
     zs.push(za - Ra - 0.012, za + Ra + 0.012);
@@ -303,7 +306,8 @@ function stationZs(sp: BodySpec): number[] {
   for (const d of sp.doors) keys.push(d.z0, d.z1);
   for (const k of keys) zs.push(k);
   // fill long gaps (the loft needs stations wherever the profile curves)
-  const maxGap = low ? 0.3 : 0.045;
+  // low-poly: slices only where the design changes; long panels stay one face long
+  const maxGap = low ? 0.95 : 0.045;
   const sorted0 = zs.filter((z) => z >= z0 - 1e-9 && z <= z1 + 1e-9).sort((a, b) => a - b);
   for (let i = 0; i + 1 < sorted0.length; i++) {
     const gap = sorted0[i + 1] - sorted0[i];
@@ -354,7 +358,7 @@ export function buildBody(sp: BodySpec): BodyResult {
   const lay = layout(sp.detail);
   const NPTS = lay.npts;
   const flat = sp.detail === 'low';
-  const ROUND_ROWS = flat ? 2 : 5;
+  const ROUND_ROWS = flat ? 1 : 5;
   for (let k = ROUND_ROWS; k >= 1; k--) {
     const phi = (k / ROUND_ROWS) * (Math.PI / 2);
     tail.push(shrinkSection(main[0], sp.tailRound * (1 - Math.cos(phi)), main[0].z - sp.tailRound * Math.sin(phi)));
@@ -419,12 +423,13 @@ export function buildBody(sp: BodySpec): BodyResult {
   };
   const cosMax = Math.cos((50 * Math.PI) / 180);
   const cosFlat = Math.cos((28 * Math.PI) / 180);
+  const cosTight = Math.cos((12 * Math.PI) / 180);
   /** normal at grid vertex (i,j) as seen from quad (qi,qk): same group, same panel, and not across a sharp fold */
   const vertexNormal = (i: number, j: number, qi: number, qk: number): Vec3 => {
     // low-poly: flat ACROSS the section (each strip of the profile is its own crisp band), smooth
     // ALONG the car (so a band reads as one long clean surface instead of a row of little facets),
     // except across a sharp fold (the nose and tail chamfers, the windshield base)
-    if (flat) {
+    if (flat && !TRUE_FLAT) {
       const own = normalize(FN[qi][qk]);
       let n: Vec3 = [0, 0, 0];
       for (const ii of [i - 1, i]) {
@@ -438,6 +443,8 @@ export function buildBody(sp: BodySpec): BodyResult {
     }
     const grp = grpOf(qk);
     const topSeg = grp === 4;
+    // low-poly: only nearly coplanar neighbours merge (one tone per flat-ish panel); everything else is a crisp edge
+    const lim = flat ? cosTight : cosMax;
     const zg = zGroup(qi);
     const own = normalize(FN[qi][qk]);
     let n: Vec3 = [0, 0, 0];
@@ -449,7 +456,7 @@ export function buildBody(sp: BodySpec): BodyResult {
         if (grpOf(kk) !== grp) continue;
         const f = FN[ii][kk];
         if (Math.hypot(...f) < 1e-12) continue;
-        if (dot(normalize(f), own) < cosMax) continue;
+        if (dot(normalize(f), own) < lim) continue;
         n = [n[0] + f[0], n[1] + f[1], n[2] + f[2]];
       }
     }
