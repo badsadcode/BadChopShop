@@ -47,11 +47,11 @@ export function buildTyre(R: number, rimR: number, width: number): Mesh {
 function dish(rimR: number, hw: number, depth: number): Vec2[] {
   return [
     [rimR + 0.012, hw * 0.86],
-    [rimR, hw * 0.8],
-    [rimR * 0.92, hw * 0.8 - depth * 0.3],
-    [rimR * 0.35, hw * 0.8 - depth],
-    [rimR * 0.18, hw * 0.8 - depth * 0.7],
-    [0.001, hw * 0.8 - depth * 0.6],
+    [rimR, hw * 0.72],
+    [rimR * 0.92, hw * 0.62 - depth * 0.3],
+    [rimR * 0.35, hw * 0.62 - depth],
+    [rimR * 0.18, hw * 0.62 - depth * 0.7],
+    [0.001, hw * 0.62 - depth * 0.6],
   ];
 }
 

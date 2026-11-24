@@ -136,8 +136,11 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
   const rake = g.num('windshieldRake', style.windshieldRake) * (type === 'van' ? 0.6 : truck ? 0.4 : 1);
   const windshieldTopZ = cowlZ - (roofY - beltF) * rake;
   const noseTop = g.num('noseTop', d.noseTop) * (style.id === 'modern' ? 1.03 : 1);
-  const hoodFrontY = Math.min(beltF - 0.04, noseTop + 0.06);
+  // hoods are nearly flat (older cars especially) and noses are tall: a droopy snout reads as a cartoon
+  const hoodDrop = { seventies: 0.04, nineties: 0.08, modern: 0.11 }[style.id] * (truck ? 1.5 : 1);
+  const hoodFrontY = Math.max(Math.min(beltF - hoodDrop, noseTop + 0.12), beltF - 0.16);
   const hoodFrontZ = noseZ - 0.12;
+  const noseTopY = Math.max(noseTop, hoodFrontY - 0.12);
 
   // --- the back of the car
   let roofRearZ: number, glassEndZ: number, tailTopY: number;
@@ -185,11 +188,12 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
   push(windshieldTopZ, roofY, roofFrontR);
   push(cowlZ, beltAt(cowlZ), 0);
   push(hoodFrontZ, hoodFrontY, 0.07);
-  push(noseZ, noseTop);
+  push(noseZ, noseTopY);
   const topPts = filletPolyline(top, fil, detail === 'low' ? 2 : 6);
 
-  const tailBottom = clearance + g.num('tailLift', [0.12, 0.2]);
-  const noseBottom = clearance + g.num('noseLift', [0.1, 0.18]);
+  // a nearly flat underside: lifted ends make a banana (toy) silhouette
+  const tailBottom = clearance + g.num('tailLift', [0.05, 0.1]);
+  const noseBottom = clearance + g.num('noseLift', [0.04, 0.08]);
   const bottom = sortByX([
     [tailZ, tailBottom], [tailZ + 0.3, clearance + 0.03], [rearAxleZ, clearance], [frontAxleZ, clearance],
     [noseZ - 0.32, clearance + 0.02], [noseZ, noseBottom],
@@ -257,7 +261,7 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
   const body: BodySpec = {
     detail,
     length, halfWidth, wheelbase, frontAxleZ, rearAxleZ, wheelRadius, tyreWidth,
-    archGap: 0.045, wellDepth: tyreWidth + 0.07,
+    archGap: 0.028, wellDepth: tyreWidth + 0.08,
     top: sortByX(topPts), bottom, belt,
     cowlZ, windshieldTopZ, roofRearZ, glassEndZ, hoodFrontZ, trunk, tailgate, uprightRear,
     windows, doors,
@@ -342,6 +346,17 @@ export function makeDesign(type: ArchetypeId, styleId: StyleId, seed: number, pi
 }
 
 export type { Vec3 };
+
+/**
+ * Where the front seats sit (hip point, z): behind the steering wheel, which sits behind the dashboard,
+ * which sits behind the windscreen base. Measured from the dashboard, not the door, so short cabs
+ * (cab-over trucks) don't put the driver inside the steering wheel.
+ */
+export function frontSeatZ(sp: BodySpec): number {
+  const front = sp.doors[0];
+  const fromDash = sp.cowlZ - 0.22 - 0.3 - 0.5;
+  return front ? Math.min((front.z0 + front.z1) / 2 - 0.15, fromDash) : fromDash;
+}
 
 /** Short code used in node names: Door_FL, Window_QR … */
 export const doorCode = (id: string): string => ({ front: 'F', rear: 'R', slide: 'S', quarter: 'Q', cargo: 'C', vent: 'V' } as Record<string, string>)[id] ?? id[0].toUpperCase();

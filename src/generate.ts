@@ -24,8 +24,8 @@ import type { Vec3 } from './core/math.js';
 import { Mesh, autoSmooth } from './core/mesh.js';
 import type { Json, Slot, Vehicle } from './core/vehicle.js';
 import { VehicleBuilder } from './core/vehicle.js';
-import { doorCode, makeDesign, type Design } from './archetypes/index.js';
-import { buildBody, planHalfWidth, type BodyResult } from './body/body.js';
+import { doorCode, frontSeatZ, makeDesign, type Design } from './archetypes/index.js';
+import { buildBody, layout, type BodyResult } from './body/body.js';
 import { buildWheel } from './parts/wheels.js';
 import { buildArchLips, buildExterior } from './parts/exterior.js';
 import { buildInterior } from './parts/interior.js';
@@ -56,7 +56,6 @@ export function generate(recipe: Recipe): Generated {
   // ------------------------------------------------------------------ body and panels
   vb.node('Body', { group: 'body', noor: { part: 'body' } });
   const panelNode = new Map<string, string>(); // bucket → node name
-  const W = (z: number): number => planHalfWidth(sp, z);
   if (sepPanels) {
     vb.node('Hood', {
       parent: 'Body', group: 'body', pivot: [0, sp.top.length ? body.sectionAt(sp.cowlZ + 0.02).H : 1, sp.cowlZ + 0.02],
@@ -137,7 +136,9 @@ export function generate(recipe: Recipe): Generated {
   const twin = (front: boolean): boolean => !!truck && !front;
   // hub x: just inside the body side; a twin pair is centred between its two tyres, under the box's edge
   const wheelX = (z: number, front = true): number =>
-    twin(front) ? truck!.boxHalfWidth - 0.04 - sp.tyreWidth - twinOffset(sp.tyreWidth) / 2 + sp.tyreWidth / 2 : W(z) - sp.tyreWidth / 2 - 0.02;
+    twin(front) ? truck!.boxHalfWidth - 0.04 - sp.tyreWidth - twinOffset(sp.tyreWidth) / 2 + sp.tyreWidth / 2 : archEdge(z) - sp.tyreWidth / 2 - 0.012;
+  // the outer edge of the wheel arch (where the flared side meets the well): tyres sit nearly flush with it
+  function archEdge(z: number): number { return body.sectionAt(z - 0.001).pts[layout(sp.detail).start.C][0]; }
   const wheels: { id: string; z: number; side: 'L' | 'R'; front: boolean }[] = [];
   for (const [axle, z] of [['F', sp.frontAxleZ], ['R', sp.rearAxleZ]] as const) {
     for (const side of ['L', 'R'] as const) wheels.push({ id: `${axle}${side}`, z, side, front: axle === 'F' });
@@ -206,7 +207,7 @@ export function generate(recipe: Recipe): Generated {
 function addMarkers(vb: VehicleBuilder, d: Design, body: BodyResult): void {
   const sp = d.body;
   const front = sp.doors[0];
-  const seatZ = front ? (front.z0 + front.z1) / 2 - 0.15 : 0;
+  const seatZ = front ? frontSeatZ(sp) : 0;
   const sec = body.sectionAt(seatZ);
   const hipY = sec.B + 0.32;
   const seat = (name: string, x: number, z: number, role: string, index: number, entry: string): void => {

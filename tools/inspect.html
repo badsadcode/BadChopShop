@@ -1,0 +1,70 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:#888;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+// Inspection contact sheet: one car, nine views (the awkward ones included), opened up where it matters.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+const q = new URLSearchParams(location.search);
+const CW = 520, CH = 340, COLS = 3, ROWS = 3;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(CW * COLS, CH * ROWS); renderer.setPixelRatio(1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.autoClear = false;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(4, 8, 5); scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({ color: '#5f6469', roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; scene.add(ground);
+const g = await new GLTFLoader().loadAsync(q.get('f'));
+const car = g.scene;
+car.traverse((o) => { if (o.isMesh && o.name.includes('colonly')) o.visible = false; });
+scene.add(car);
+const open = (t) => car.traverse((o) => {
+  const n = o.userData?.noor;
+  if (n?.marker !== 'door') return;
+  o.userData.rest ??= { p: o.position.clone(), q: o.quaternion.clone() };
+  const axis = new THREE.Vector3(...n.axis).normalize();
+  if (n.opens === 'slide') o.position.copy(o.userData.rest.p).addScaledVector(axis, n.max * t);
+  else o.quaternion.copy(o.userData.rest.q).multiply(new THREE.Quaternion().setFromAxisAngle(axis, n.max * t));
+});
+const box = new THREE.Box3().setFromObject(car);
+const L = box.max.z - box.min.z, H = box.max.y;
+const seat = new THREE.Vector3(); let seatFound = false;
+car.traverse((o) => { if (o.name === 'Seat_Driver') { o.getWorldPosition(seat); seatFound = true; } });
+const views = [
+  ['side', [L * 1.25, H * 0.45, 0], [0, H * 0.45, 0], 30, 0],
+  ['front', [0.6, H * 0.6, L * 1.15], [0, H * 0.45, 0], 30, 0],
+  ['rear', [-0.6, H * 0.6, -L * 1.15], [0, H * 0.45, 0], 30, 0],
+  ['3/4 front', [L * 0.75, H * 0.9, L * 0.85], [0, H * 0.4, 0], 32, 0],
+  ['3/4 rear high', [-L * 0.7, H * 1.8, -L * 0.75], [0, H * 0.35, 0], 32, 0],
+  ['underneath', [L * 0.45, -0.25, L * 0.6], [0, 0.35, 0], 40, 0],
+  ['opened up', [L * 0.65, H * 1.2, L * 0.7], [0, H * 0.4, 0], 34, 1],
+  ['engine bay', [0.4, H * 1.7, box.max.z + 0.6], [0, H * 0.35, box.max.z - 0.7], 45, 1],
+  ['driver seat', seatFound ? [seat.x - 0.05, seat.y + 0.55, seat.z - 0.1] : [0.35, 1.1, 0], seatFound ? [seat.x - 0.2, seat.y + 0.35, seat.z + 2] : [0.3, 0.9, 2], 70, 0],
+];
+renderer.setScissorTest(true);
+views.forEach(([name, pos, look, fov, opened], i) => {
+  const c = i % COLS, r = Math.floor(i / COLS);
+  const x = c * CW, y = (ROWS - 1 - r) * CH;
+  open(opened);
+  const cam = new THREE.PerspectiveCamera(fov, CW / CH, 0.02, 200);
+  cam.position.set(...pos); cam.lookAt(...look);
+  renderer.setViewport(x, y, CW, CH); renderer.setScissor(x, y, CW, CH);
+  renderer.setClearColor(new THREE.Color('#9aa0a6')); renderer.clear();
+  ground.visible = name !== 'underneath';
+  renderer.render(scene, cam);
+});
+// labels
+const lab = document.createElement('canvas'); lab.width = CW * COLS; lab.height = CH * ROWS;
+const ctx = lab.getContext('2d'); ctx.drawImage(renderer.domElement, 0, 0);
+ctx.font = 'bold 16px sans-serif'; ctx.fillStyle = '#111';
+views.forEach(([name], i) => { ctx.fillText(name, (i % COLS) * CW + 10, Math.floor(i / COLS) * CH + 22); });
+ctx.strokeStyle = '#333'; for (let i = 1; i < COLS; i++) { ctx.beginPath(); ctx.moveTo(i * CW, 0); ctx.lineTo(i * CW, CH * ROWS); ctx.stroke(); }
+for (let i = 1; i < ROWS; i++) { ctx.beginPath(); ctx.moveTo(0, i * CH); ctx.lineTo(CW * COLS, i * CH); ctx.stroke(); }
+document.body.replaceChildren(lab);
+window.__done = true;
+</script></body></html>

@@ -29,7 +29,7 @@ await page.route('http://local/**', (route) => {
   route.fulfill({ status: 200, body: readFileSync(file), contentType: type });
 });
 const q = new URLSearchParams({ f: glbs.map((g) => '/' + g).join(','), view, w, h, ...opts });
-await page.goto('http://local/tools/render.html?' + q);
+await page.goto('http://local/tools/' + (opts.page || 'render') + '.html?' + q);
 await page.waitForFunction(() => window.__done === true, null, { timeout: 120000 });
 await page.screenshot({ path: outFile, type: outFile.endsWith('.jpg') ? 'jpeg' : 'png', quality: outFile.endsWith('.jpg') ? 88 : undefined });
 await browser.close();

@@ -478,7 +478,7 @@ function buildSpoiler(vb: VehicleBuilder, d: Design, body: BodyResult, kind: 'li
   } else {
     const wing: Vec2[] = [[-0.11, 0], [0.09, 0.01], [0.08, 0.025], [-0.11, 0.035]];
     const wy = y + (sp.trunk ? 0.16 : 0.05);
-    vb.add(node, 'MAT_Paint', extrudeAlongX(wing, half * 2 + 0.06, 0.008).translate([0, wy, z - 0.02]));
+    vb.add(node, 'MAT_Paint', extrudeAlongX(wing, half * 2 - 0.04, 0.008).translate([0, wy, z - 0.02]));
     for (const s of [1, -1]) vb.add(node, d.style.id === 'modern' ? 'MAT_Trim' : 'MAT_Paint', box([s * (half - 0.12), (y + wy) / 2, z - 0.02], [0.04, wy - y + 0.02, 0.1]));
   }
 }

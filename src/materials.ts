@@ -15,21 +15,22 @@ export function materialsFor(d: Design, overrides: Partial<Record<Slot, Partial<
   const s = d.style;
   const metallicPaint = s.id === 'seventies' ? 0.05 : 0.35;
   const base: Record<Slot, MaterialDef> = {
-    MAT_Paint: { color: paint, metallic: metallicPaint, roughness: s.id === 'seventies' ? 0.38 : 0.28 },
-    MAT_Paint2: { color: paint2, metallic: metallicPaint, roughness: 0.32 },
-    MAT_Trim: { color: [0.05, 0.05, 0.055], metallic: 0, roughness: 0.55 },
-    MAT_Chrome: { color: [0.86, 0.87, 0.88], metallic: 1, roughness: 0.12 },
-    MAT_Plastic: { color: s.plastic, metallic: 0, roughness: 0.7 },
+    // fairly matte: glossy paint under studio light reads as moulded plastic (toys)
+    MAT_Paint: { color: paint, metallic: metallicPaint * 0.4, roughness: s.id === 'seventies' ? 0.6 : 0.5, doubleSided: true },
+    MAT_Paint2: { color: paint2, metallic: metallicPaint * 0.4, roughness: 0.55, doubleSided: true },
+    MAT_Trim: { color: [0.05, 0.05, 0.055], metallic: 0, roughness: 0.6, doubleSided: true },
+    MAT_Chrome: { color: [0.78, 0.79, 0.8], metallic: 1, roughness: 0.22, doubleSided: true },
+    MAT_Plastic: { color: s.plastic, metallic: 0, roughness: 0.75, doubleSided: true },
     MAT_Rubber: { color: [0.035, 0.035, 0.037], metallic: 0, roughness: 0.88 },
     MAT_Rim: d.rim.startsWith('steel')
-      ? { color: d.rim === 'steel-plain' ? [0.12, 0.12, 0.13] : [0.55, 0.56, 0.58], metallic: 0.6, roughness: 0.45 }
+      ? { color: d.rim === 'steel-plain' ? [0.1, 0.1, 0.11] : [0.42, 0.43, 0.45], metallic: 0.6, roughness: 0.5 }
       : d.rim === 'cover'
         ? { color: [0.58, 0.6, 0.62], metallic: 0.2, roughness: 0.45 }
-        : { color: [0.68, 0.69, 0.71], metallic: 0.9, roughness: 0.28 },
-    MAT_Glass: { color: [0.06, 0.075, 0.09], metallic: 0, roughness: 0.03, alpha: 0.72 },
-    MAT_Interior: { color: mix(mul(d.interiorColor, 0.55), [0.06, 0.06, 0.065], 0.55), metallic: 0, roughness: 0.85, doubleSided: true },
+        : { color: [0.5, 0.51, 0.53], metallic: 0.85, roughness: 0.35 },
+    MAT_Glass: { color: [0.06, 0.075, 0.09], metallic: 0, roughness: 0.08, alpha: 0.72, doubleSided: true },
+    MAT_Interior: { color: mix(mul(d.interiorColor, 0.8), [0.1, 0.1, 0.105], 0.35), metallic: 0, roughness: 0.85, doubleSided: true },
     MAT_Seat: { color: d.interiorColor, metallic: 0, roughness: 0.8 },
-    MAT_Underbody: { color: [0.06, 0.06, 0.065], metallic: 0, roughness: 0.9 },
+    MAT_Underbody: { color: [0.06, 0.06, 0.065], metallic: 0, roughness: 0.9, doubleSided: true },
     MAT_Engine: { color: [0.32, 0.33, 0.35], metallic: 0.7, roughness: 0.5 },
     MAT_Metal: { color: [0.45, 0.46, 0.48], metallic: 0.85, roughness: 0.4 },
     MAT_Brake: { color: s.id === 'modern' ? [0.62, 0.08, 0.07] : [0.2, 0.2, 0.21], metallic: 0.4, roughness: 0.5 },
