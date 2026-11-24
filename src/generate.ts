@@ -191,8 +191,8 @@ export function generate(recipe: Recipe): Generated {
   // trucks are built in the cab's frame: slide everything so the whole footprint is centred on z = 0
   if (design.shiftZ) vb.get('Body').translation[2] += design.shiftZ;
 
-  // low-poly look: smooth across gentle angles, hard edges at chamfers and real corners
-  if (sp.detail === 'low') for (const n of vb.nodes) for (const [slot, m] of n.meshes) n.meshes.set(slot, autoSmooth(m, 40));
+  // low-poly look: flat facets; only nearly-flat neighbours (tiny bends) share a normal
+  if (sp.detail === 'low') for (const n of vb.nodes) for (const [slot, m] of n.meshes) n.meshes.set(slot, autoSmooth(m, 12));
 
   const vehicle = vb.build({
     wheels: inc.wheels, brakes: inc.brakes, suspension: inc.suspension, lights: inc.lights, interior: inc.interior,

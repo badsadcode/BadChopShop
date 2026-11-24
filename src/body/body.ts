@@ -17,7 +17,7 @@
 import type { Vec2, Vec3 } from '../core/math.js';
 import { clamp, cross, dot, lerp, normalize, smoothstep, sub } from '../core/math.js';
 import { sampleAt } from '../core/curve.js';
-import { Mesh } from '../core/mesh.js';
+import { Mesh, faceted } from '../core/mesh.js';
 import type { Slot } from '../core/vehicle.js';
 import type { BodySpec, Detail } from './spec.js';
 
@@ -418,8 +418,24 @@ export function buildBody(sp: BodySpec): BodyResult {
     return GROUP[seg];
   };
   const cosMax = Math.cos((50 * Math.PI) / 180);
+  const cosFlat = Math.cos((28 * Math.PI) / 180);
   /** normal at grid vertex (i,j) as seen from quad (qi,qk): same group, same panel, and not across a sharp fold */
   const vertexNormal = (i: number, j: number, qi: number, qk: number): Vec3 => {
+    // low-poly: flat ACROSS the section (each strip of the profile is its own crisp band), smooth
+    // ALONG the car (so a band reads as one long clean surface instead of a row of little facets),
+    // except across a sharp fold (the nose and tail chamfers, the windshield base)
+    if (flat) {
+      const own = normalize(FN[qi][qk]);
+      let n: Vec3 = [0, 0, 0];
+      for (const ii of [i - 1, i]) {
+        if (ii < 0 || ii >= nS - 1) continue;
+        if (zGroup(ii) !== zGroup(qi)) continue;
+        const f = FN[ii][qk];
+        if (Math.hypot(...f) < 1e-12 || dot(normalize(f), own) < cosFlat) continue;
+        n = [n[0] + f[0], n[1] + f[1], n[2] + f[2]];
+      }
+      return Math.hypot(...n) < 1e-12 ? own : normalize(n);
+    }
     const grp = grpOf(qk);
     const topSeg = grp === 4;
     const zg = zGroup(qi);
@@ -472,8 +488,8 @@ export function buildBody(sp: BodySpec): BodyResult {
   }
 
   // end caps (with an upright rear window for estates and vans)
-  const capTail = capMesh(st[0], -1, sp.uprightRear ? sp : null, sp.tailRound * 0.45, (y) => rakedZ(sp, st[0], y));
-  const capNose = capMesh(st[nS - 1], 1, null, sp.noseRound * 0.45, (y) => rakedZ(sp, st[nS - 1], y));
+  const capTail = capMesh(st[0], -1, sp.uprightRear ? sp : null, sp.tailRound * 0.45, (y) => rakedZ(sp, st[0], y), flat);
+  const capNose = capMesh(st[nS - 1], 1, null, sp.noseRound * 0.45, (y) => rakedZ(sp, st[nS - 1], y), flat);
   for (const [bucket, slot, m] of [...capTail, ...capNose]) {
     const target = bucket === 'glass' ? outL('rear_window', 'MAT_Glass') : outL(sp.uprightRear && bucket === 'trim' ? 'body' : 'body', slot);
     target.merge(m);
@@ -520,7 +536,7 @@ function fullOutline(s: Section): Vec2[] {
  * Close an end of the body. The cap is built as rings shrinking toward the middle, so an upright
  * rear window (a rounded rectangle) can sit in it as real geometry with a trim frame.
  */
-function capMesh(s: Section, dir: 1 | -1, glassFor: BodySpec | null, bulge = 0, zAt: (y: number) => number = () => s.z): [string, Slot, Mesh][] {
+function capMesh(s: Section, dir: 1 | -1, glassFor: BodySpec | null, bulge = 0, zAt: (y: number) => number = () => s.z, flatShade = false): [string, Slot, Mesh][] {
   const outline = fullOutline(s);
   let top = -Infinity;
   for (const p of outline) top = Math.max(top, p[1]);
@@ -540,6 +556,7 @@ function capMesh(s: Section, dir: 1 | -1, glassFor: BodySpec | null, bulge = 0, 
       paint.tri(o[i], ii[j], ii[i], facing);
       paint.tri(c, ii[i], ii[j], facing);
     }
+    if (flatShade) return [['body', 'MAT_Paint', faceted(paint)]];
     recomputeNormals(paint);
     return [['body', 'MAT_Paint', paint]];
   }
