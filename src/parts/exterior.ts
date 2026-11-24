@@ -8,7 +8,7 @@
  */
 import type { Vec2, Vec3 } from '../core/math.js';
 import { add, normalize, scale } from '../core/math.js';
-import { ellipse, roundedRect } from '../core/curve.js';
+import { ellipse, roundedRect, triangulate } from '../core/curve.js';
 import { Mesh, box, extrude, sweep } from '../core/mesh.js';
 import type { Slot, VehicleBuilder } from '../core/vehicle.js';
 import { doorCode, type Design } from '../archetypes/index.js';
@@ -34,6 +34,54 @@ function rayFor(proj: Proj, u: number, v: number, a: number, b: number, d: Desig
  * Returns the face (lifted by `lift`) and a wall down into the body.
  */
 export function decal(body: BodyResult, d: Design, proj: Proj, outline0: Vec2[], a: number, b: number, lift: number, wall = 0.02): { face: Mesh; wall: Mesh } | null {
+  if (d.body.detail === 'low' && (proj === 'front' || proj === 'rear')) return panel(body, d, proj, outline0, a, b, lift);
+  return conformDecal(body, d, proj, outline0, a, b, lift, wall);
+}
+
+/**
+ * A RIGID part (lamp, grille, plate, fascia) fitted to the body the way a modeller would: a flat
+ * panel in the plane of the surface at its centre, sunk into the body and standing proud by `proud`.
+ * No bending over folds, so no torn edges; where the body curves away the panel simply disappears
+ * into it, which reads as an inset.
+ */
+function panel(body: BodyResult, d: Design, proj: Proj, outline: Vec2[], a: number, b: number, proud: number): { face: Mesh; wall: Mesh } | null {
+  const r = rayFor(proj, 0, 0, a, b, d);
+  const hit = raycast(body.rayTris, r.o, r.dir);
+  if (!hit) return null;
+  const out = scale(r.dir, -1);
+  // lean with the surface (raked noses) but never further than halfway from the projection axis
+  const n = normalize(add(scale(out, 0.55), scale(hit.n, 0.45)));
+  const xw: Vec3 = proj === 'front' || proj === 'rear' ? [1, 0, 0] : [0, 0, 1];
+  // in-plane axes: "u" along world x (or z for sides), "v" up
+  const ux = normalize(sub3(xw, scale(n, dot3(xw, n))));
+  const vy = normalize(cross3(n, ux));
+  const vUp: Vec3 = vy[1] < 0 ? scale(vy, -1) : vy;
+  const embed = 0.04;
+  const at = (u: number, v: number, k: number): Vec3 => add(add(add(hit.p, scale(ux, u)), scale(vUp, v)), scale(n, k));
+  const face = new Mesh(), wall = new Mesh();
+  const ids = outline.map(([u, v]) => face.v(at(u, v, proud), n, [u, v]));
+  const tris = triangulate(outline);
+  for (let i = 0; i < tris.length; i += 3) face.tri(ids[tris[i]], ids[tris[i + 1]], ids[tris[i + 2]], n);
+  let cu = 0, cv = 0;
+  for (const [u, v] of outline) { cu += u; cv += v; }
+  cu /= outline.length; cv /= outline.length;
+  for (let i = 0; i < outline.length; i++) {
+    const [u0, v0] = outline[i], [u1, v1] = outline[(i + 1) % outline.length];
+    const mu = (u0 + u1) / 2 - cu, mv = (v0 + v1) / 2 - cv;
+    const facing = normalize(add(scale(ux, mu), scale(vUp, mv)));
+    const q0 = wall.v(at(u0, v0, proud), facing), q1 = wall.v(at(u1, v1, proud), facing);
+    const q2 = wall.v(at(u1, v1, -embed), facing), q3 = wall.v(at(u0, v0, -embed), facing);
+    wall.quad(q0, q1, q2, q3, facing);
+  }
+  return { face, wall };
+}
+
+const dot3 = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const sub3 = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const cross3 = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+
+/** Project an outline onto the body (bends over curves); used for side details and smooth detail. */
+function conformDecal(body: BodyResult, d: Design, proj: Proj, outline0: Vec2[], a: number, b: number, lift: number, wall = 0.02): { face: Mesh; wall: Mesh } | null {
   // subdivide long edges so the decal can bend round curved bodywork
   const outline: Vec2[] = [];
   const low = d.body.detail === 'low';
@@ -218,7 +266,7 @@ export function buildExterior(vb: VehicleBuilder, d: Design, body: BodyResult): 
   // ------------------------------------------------------------------ number plates
   const plate = roundedRect(0.5, 0.11, 0.01, 1);
   const plateFrontY = st.bumper === 'body' ? lampY - 0.24 : bumperYFront - 0.02;
-  if (st.bumper !== 'body') put(vb, 'Bumper_Front', 'MAT_Plate', 'MAT_Trim', decal(body, d, 'front', plate, 0, plateFrontY, 0.075));
+  if (st.bumper !== 'body') put(vb, 'Bumper_Front', 'MAT_Plate', 'MAT_Trim', decal(body, d, 'front', plate, 0, plateFrontY, BUMPER_DEPTH[st.bumper] + 0.008));
   else put(vb, 'Bumper_Front', 'MAT_Plate', 'MAT_Trim', decal(body, d, 'front', plate, 0, plateFrontY, 0.012));
 
   // ------------------------------------------------------------------ tail lamps
@@ -236,14 +284,16 @@ export function buildExterior(vb: VehicleBuilder, d: Design, body: BodyResult): 
       put(vb, 'Lights_Rear', 'MAT_LightIndicator', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w * 0.48, h * 0.45, 0.005, 1), x + s * w * 0.26, tailY - h * 0.25, 0.014));
       put(vb, 'Lights_Rear', 'MAT_LightReverse', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w * 0.48, h * 0.45, 0.005, 1), x - s * w * 0.26, tailY - h * 0.25, 0.014));
     } else if (d.taillamp === 'wide') {
-      const w = tailW * 0.5, h = 0.13;
+      const w = tailW * 0.5, h = 0.14;
       const cx = s * tailW * 0.64;
+      put(vb, 'Lights_Rear', 'MAT_Trim', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w + 0.03, h + 0.03, 0.025, 1), cx, tailY, 0.006));
       put(vb, 'Lights_Rear', 'MAT_LightBrake', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w, h, 0.02, 1), cx, tailY, 0.012));
       put(vb, 'Lights_Rear', 'MAT_LightIndicator', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w * 0.3, h * 0.35, 0.005, 1), cx + s * w * 0.28, tailY - h * 0.22, 0.017));
       put(vb, 'Lights_Rear', 'MAT_LightReverse', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w * 0.3, h * 0.35, 0.005, 1), cx - s * w * 0.1, tailY - h * 0.22, 0.017));
     } else {
-      const w = tailW * 0.4, h = 0.07;
+      const w = tailW * 0.4, h = 0.08;
       const cx = s * tailW * 0.68;
+      put(vb, 'Lights_Rear', 'MAT_Trim', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w + 0.03, h + 0.03, 0.012, 1), cx, tailY + 0.02, 0.006));
       put(vb, 'Lights_Rear', 'MAT_LightBrake', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w, h, 0.01, 1), cx, tailY + 0.02, 0.012));
       put(vb, 'Lights_Rear', 'MAT_LightReverse', 'MAT_Trim', decal(body, d, 'rear', roundedRect(w * 0.25, h * 0.5, 0.005, 1), cx - s * w * 0.2, tailY + 0.02, 0.016));
     }
@@ -313,42 +363,44 @@ function inflate(poly: Vec2[], dd: number): Vec2[] {
 /** A bumper bar swept around the nose or tail at height y. dir: +1 front, −1 rear. */
 function buildBumper(vb: VehicleBuilder, d: Design, body: BodyResult, node: string, dir: 1 | -1, y: number): void {
   const sp = d.body, st = d.style;
+  // modern bumpers are part of the body shell (the nose itself); nothing to bolt on
+  if (st.bumper === 'body') return;
   const low = sp.detail === 'low';
   const zEnd = (dir * sp.length) / 2;
   const back = 1.2;
   const center: Vec3 = [0, y, zEnd - dir * back];
   const path: Vec3[] = [];
   const n = low ? 9 : 25;
-  // wrap just round the corners, ending well ahead of the wheel arch
-  const wrap = st.bumper === 'chrome' ? 0.22 : 0.3;
+  // wrap just round the corners and stop: no fins sticking out ahead of the wheels
+  const wrap = st.bumper === 'chrome' ? 0.14 : 0.2;
   const spread = Math.atan2(sp.halfWidth, back - wrap);
   for (let k = 0; k < n; k++) {
     const a = -spread + (2 * spread * k) / (n - 1);
     const rd: Vec3 = [Math.sin(a), 0, dir * Math.cos(a)];
     const h = raycast(body.rayTris, add(center, scale(rd, 3)), scale(rd, -1));
     if (!h) continue;
-    const out = normalize([h.n[0], 0, h.n[2]]);
-    const off = st.bumper === 'chrome' ? 0.045 : st.bumper === 'plastic' ? 0.02 : 0.008;
-    path.push(add(h.p, scale(out, off)));
+    // the path runs ON the body surface; the profile reaches 4 cm into the body, so it's anchored
+    path.push(h.p);
   }
   if (path.length < 3) return;
+  const depth = BUMPER_DEPTH[st.bumper];
   let prof: Vec2[];
   let slot: Slot;
   if (st.bumper === 'chrome') {
-    prof = low ? [[-0.035, -0.05], [0.03, -0.045], [0.035, 0.045], [-0.035, 0.05]] : roundedRect(0.07, 0.1, 0.02, 3);
+    // a chunky chrome bar with a chamfered face, and a black rubber strip along it
+    prof = low ? [[-0.04, -0.055], [depth - 0.012, -0.055], [depth, -0.035], [depth, 0.035], [depth - 0.012, 0.055], [-0.04, 0.055]] : roundedRect(depth + 0.04, 0.11, 0.02, 3).map(([u, v]) => [u + (depth - 0.04) / 2, v] as Vec2);
     slot = 'MAT_Chrome';
-    // rubber strip on the bar
-    vb.add(node, 'MAT_Rubber', sweep(path.map((p) => [p[0], p[1] + 0.005, p[2]] as Vec3), [[0.03, -0.012], [0.045, -0.01], [0.045, 0.012], [0.03, 0.014]], center));
-  } else if (st.bumper === 'plastic') {
-    prof = [[-0.03, -0.11], [0.025, -0.1], [0.035, 0.0], [0.025, 0.08], [-0.03, 0.09]];
-    slot = 'MAT_Plastic';
+    vb.add(node, 'MAT_Rubber', sweep(path, [[depth - 0.01, -0.014], [depth + 0.012, -0.012], [depth + 0.012, 0.012], [depth - 0.01, 0.014]], center));
   } else {
-    prof = [[-0.02, -0.03], [0.02, -0.025], [0.022, 0.02], [-0.02, 0.025]];
+    // a tall plastic bumper block: chamfered top and bottom
+    prof = [[-0.04, -0.11], [depth - 0.02, -0.11], [depth, -0.085], [depth, 0.06], [depth - 0.025, 0.09], [-0.04, 0.09]];
     slot = 'MAT_Plastic';
-    path.forEach((p) => { p[1] = sampleAt(sp.bottom, p[2]) + 0.04; });
   }
   vb.add(node, slot, sweep(path, prof, center));
 }
+
+/** How far each kind of bumper stands proud of the body (plates sit on its face). */
+const BUMPER_DEPTH = { chrome: 0.06, plastic: 0.05, body: 0 } as const;
 
 /**
  * Wheel-arch lips: a small rolled lip swept round each arch on the body side. It hides the hard

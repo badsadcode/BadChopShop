@@ -497,8 +497,8 @@ export function buildBody(sp: BodySpec): BodyResult {
   }
 
   // end caps (with an upright rear window for estates and vans)
-  const capTail = capMesh(st[0], -1, sp.uprightRear ? sp : null, sp.tailRound * 0.45, (y) => rakedZ(sp, st[0], y), flat);
-  const capNose = capMesh(st[nS - 1], 1, null, sp.noseRound * 0.45, (y) => rakedZ(sp, st[nS - 1], y), flat);
+  const capTail = capMesh(st[0], -1, sp.uprightRear ? sp : null, flat ? 0 : sp.tailRound * 0.45, (y) => rakedZ(sp, st[0], y), flat);
+  const capNose = capMesh(st[nS - 1], 1, null, flat ? 0 : sp.noseRound * 0.45, (y) => rakedZ(sp, st[nS - 1], y), flat);
   for (const [bucket, slot, m] of [...capTail, ...capNose]) {
     const target = bucket === 'glass' ? outL('rear_window', 'MAT_Glass') : outL(sp.uprightRear && bucket === 'trim' ? 'body' : 'body', slot);
     target.merge(m);

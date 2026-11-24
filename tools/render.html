@@ -43,8 +43,13 @@ const r = Math.max(size.x, size.z * 0.8, size.y * 2) * (+q.get('zoom') || 1.15);
 const dirs = { tq: [1, 0.42, 1.25], tqr: [-1.1, 0.45, -1.2], side: [1, 0.12, 0], front: [0, 0.2, 1], rear: [0, 0.25, -1], top: [0.001, 1, 0.001], low: [1.2, 0.18, 1.0] };
 const d = new THREE.Vector3(...(dirs[view] || dirs.tq)).normalize();
 const dist = r / (2 * Math.tan((fov * Math.PI) / 360));
-cam.position.copy(center).addScaledVector(d, dist);
-cam.lookAt(center);
+if (q.get('cam')) {
+  cam.position.set(...q.get('cam').split(',').map(Number));
+  cam.lookAt(...(q.get('look') || '0,0.6,0').split(',').map(Number));
+} else {
+  cam.position.copy(center).addScaledVector(d, dist);
+  cam.lookAt(center);
+}
 renderer.render(scene, cam);
 window.__done = true;
 </script></body></html>
